@@ -3,6 +3,7 @@ import './App.css'
 
 type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings'
 type WallpaperId = 'bloom' | 'flow' | 'night'
+type ScreenState = 'boot' | 'lock' | 'desktop'
 
 interface AppDefinition {
   id: AppId
@@ -152,6 +153,11 @@ const windowSeeds = [
   { x: 212, y: 128 },
 ]
 
+const storageKeys = {
+  wallpaper: 'webpc.wallpaper',
+  windows: 'webpc.windows',
+}
+
 const appStartedAt = Date.now()
 
 function clamp(value: number, min: number, max: number) {
@@ -174,22 +180,129 @@ function createWindow(id: AppId, index: number, z: number): WindowState {
   }
 }
 
+function getDefaultWindows() {
+  return [createWindow('home', 0, 8)]
+}
+
+function isWallpaperId(value: string): value is WallpaperId {
+  return wallpapers.some((wallpaper) => wallpaper.id === value)
+}
+
+function isAppId(value: string): value is AppId {
+  return apps.some((app) => app.id === value)
+}
+
+function loadWallpaper(): WallpaperId {
+  if (typeof window === 'undefined') {
+    return 'bloom'
+  }
+
+  const savedWallpaper = window.localStorage.getItem(storageKeys.wallpaper)
+
+  return savedWallpaper && isWallpaperId(savedWallpaper) ? savedWallpaper : 'bloom'
+}
+
+function loadWindows(): WindowState[] {
+  if (typeof window === 'undefined') {
+    return getDefaultWindows()
+  }
+
+  const savedWindows = window.localStorage.getItem(storageKeys.windows)
+
+  if (!savedWindows) {
+    return getDefaultWindows()
+  }
+
+  try {
+    const parsed = JSON.parse(savedWindows)
+
+    if (!Array.isArray(parsed)) {
+      return getDefaultWindows()
+    }
+
+    const restoredWindows = parsed
+      .filter((windowState): windowState is WindowState => {
+        return typeof windowState === 'object' && windowState !== null
+      })
+      .map((windowState, index) => {
+        const id = typeof windowState.id === 'string' && isAppId(windowState.id)
+          ? windowState.id
+          : null
+
+        if (!id) {
+          return null
+        }
+
+        const definition = appLookup[id]
+
+        return {
+          id,
+          x: typeof windowState.x === 'number' ? windowState.x : windowSeeds[index % windowSeeds.length].x,
+          y: typeof windowState.y === 'number' ? windowState.y : windowSeeds[index % windowSeeds.length].y,
+          width: typeof windowState.width === 'number' ? windowState.width : definition.window.width,
+          height: typeof windowState.height === 'number' ? windowState.height : definition.window.height,
+          z: typeof windowState.z === 'number' ? windowState.z : index + 8,
+          minimized: Boolean(windowState.minimized),
+          maximized: Boolean(windowState.maximized),
+        }
+      })
+      .filter((windowState): windowState is WindowState => windowState !== null)
+
+    return restoredWindows.length > 0 ? restoredWindows : getDefaultWindows()
+  } catch {
+    return getDefaultWindows()
+  }
+}
+
 function App() {
   const desktopRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
-  const nextZIndex = useRef(20)
+  const nextZIndex = useRef(
+    loadWindows().reduce((highestZ, windowState) => Math.max(highestZ, windowState.z), 20),
+  )
 
-  const [wallpaper, setWallpaper] = useState<WallpaperId>('bloom')
+  const [screen, setScreen] = useState<ScreenState>('boot')
+  const [wallpaper, setWallpaper] = useState<WallpaperId>(() => loadWallpaper())
   const [now, setNow] = useState(() => new Date())
   const [startOpen, setStartOpen] = useState(false)
-  const [windows, setWindows] = useState<WindowState[]>([
-    createWindow('home', 0, 8),
-  ])
+  const [windows, setWindows] = useState<WindowState[]>(() => loadWindows())
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    const bootTimer = window.setTimeout(() => {
+      setScreen('lock')
+    }, 1800)
+
+    return () => window.clearTimeout(bootTimer)
+  }, [])
+
+  useEffect(() => {
+    if (screen === 'desktop') {
+      return undefined
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (screen === 'lock' && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault()
+        setScreen('desktop')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [screen])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.wallpaper, wallpaper)
+  }, [wallpaper])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.windows, JSON.stringify(windows))
+  }, [windows])
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -233,6 +346,15 @@ function App() {
       window.removeEventListener('pointerup', stopDragging)
     }
   }, [])
+
+  const unlockDesktop = () => {
+    setScreen('desktop')
+  }
+
+  const lockDesktop = () => {
+    setStartOpen(false)
+    setScreen('lock')
+  }
 
   const bringToFront = (id: AppId) => {
     const z = ++nextZIndex.current
@@ -329,7 +451,7 @@ function App() {
               <h1>Desktop web com linguagem de Windows 11.</h1>
               <p className="hero-copy">
                 Barra centralizada, wallpaper bloom, superficies em mica, janelas
-                arredondadas e base pronta para publicar no GitHub Pages.
+                arredondadas, lock screen, boot screen e estado salvo localmente.
               </p>
             </div>
 
@@ -347,7 +469,7 @@ function App() {
             <article className="surface-card large-widget">
               <span className="metric-label">Sessao</span>
               <strong>{sessionMinutes} min</strong>
-              <p>Relogio ativo, taskbar interativa e janelas com foco dinamico.</p>
+              <p>Relogio ativo, taskbar interativa e janelas restauradas localmente.</p>
             </article>
             <article className="surface-card">
               <span className="metric-label">GitHub Pages</span>
@@ -357,7 +479,7 @@ function App() {
             <article className="surface-card">
               <span className="metric-label">Tema</span>
               <strong>{activeWallpaper?.name}</strong>
-              <p>Papel de parede com variacoes clara, fluida e escura.</p>
+              <p>Wallpaper e layout das janelas persistem no navegador.</p>
             </article>
           </section>
 
@@ -371,11 +493,11 @@ function App() {
               </ul>
             </article>
             <article className="surface-card">
-              <p className="section-title">Proximo passo</p>
+              <p className="section-title">Persistencia</p>
               <ul className="feature-list">
-                <li>Ativar o GitHub Pages em `Settings &gt; Pages`.</li>
-                <li>Adicionar lock screen e boot screen.</li>
-                <li>Persistir wallpaper e janelas com localStorage.</li>
+                <li>Wallpaper salvo com localStorage.</li>
+                <li>Janelas abertas e posicoes restauradas ao recarregar.</li>
+                <li>Lock screen pode ser ativada pelo menu iniciar.</li>
               </ul>
             </article>
           </section>
@@ -628,7 +750,7 @@ function App() {
         <aside className="desktop-widgets">
           <article className="widget-card glass-panel weather-widget">
             <span className="widget-title">Widgets</span>
-            <strong>26°</strong>
+            <strong>26 C</strong>
             <p>Sao Paulo</p>
             <small>Desktop Windows-like em execucao</small>
           </article>
@@ -705,7 +827,6 @@ function App() {
           })}
         </section>
       </main>
-
       {startOpen ? (
         <section className="start-menu glass-panel" onPointerDown={(event) => event.stopPropagation()}>
           <div className="start-search">
@@ -758,7 +879,7 @@ function App() {
               <span className="profile-avatar">B</span>
               <span>Belin7z</span>
             </div>
-            <button type="button" className="power-button" aria-label="Power" />
+            <button type="button" className="power-button" aria-label="Lock screen" onClick={lockDesktop} />
           </div>
         </section>
       ) : null}
@@ -822,6 +943,50 @@ function App() {
 
         <div className="show-desktop" />
       </footer>
+
+      {screen === 'boot' ? (
+        <section className="boot-screen">
+          <div className="boot-center">
+            <span className="boot-logo windows-glyph">
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+            <p>Iniciando Web PC</p>
+            <div className="boot-loader">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {screen === 'lock' ? (
+        <section className="lock-screen" onClick={unlockDesktop}>
+          <div className="lock-overlay" />
+          <div className="lock-content" onClick={(event) => event.stopPropagation()}>
+            <div className="lock-clock">
+              <strong>{timeLabel}</strong>
+              <span>{dateLabel}</span>
+            </div>
+
+            <div className="lock-card">
+              <span className="lock-avatar">B</span>
+              <div>
+                <strong>Belin7z</strong>
+                <span>Web PC</span>
+              </div>
+              <button type="button" className="signin-button" onClick={unlockDesktop}>
+                Entrar
+              </button>
+            </div>
+
+            <p className="lock-hint">Pressione Enter ou clique em Entrar</p>
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }
