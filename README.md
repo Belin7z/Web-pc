@@ -1,14 +1,15 @@
 # Web PC
 
-Interface de PC virtual feita em React + TypeScript + Vite, com visual de desktop no navegador.
+Web PC em React + TypeScript + Vite, com visual inspirado no Windows e deploy pronto para GitHub Pages.
 
-## O que foi criado
+## O que tem no projeto
 
-- Desktop com atalhos para abrir apps.
-- Janelas com foco, minimizar, maximizar e arrastar.
-- Taskbar com relógio e menu iniciar.
-- Apps simulados para Central, Meu PC, Terminal, Navegador e Configurações.
-- Troca de wallpaper para variar o ambiente visual.
+- Desktop no estilo Windows 11
+- Taskbar centralizada
+- Menu iniciar com apps fixados e recomendados
+- Janelas com arrastar, minimizar e maximizar
+- Explorador, navegador, terminal e configuracoes
+- Workflow automatico para publicar no GitHub Pages
 
 ## Rodando localmente
 
@@ -17,12 +18,25 @@ npm install
 npm run dev
 ```
 
-## Build de produção
+## Build
 
 ```bash
 npm run build
 ```
 
-## Repositório
+## GitHub Pages
 
-GitHub: https://github.com/Belin7z/Web-pc
+O projeto ja esta preparado para publicar no Pages do repositorio `Belin7z/Web-pc`.
+
+- `vite.config.ts` usa `base: "/Web-pc/"`
+- `.github/workflows/deploy.yml` gera e publica o `dist`
+
+Para ativar no GitHub:
+
+1. Abra `Settings > Pages`
+2. Em `Source`, selecione `GitHub Actions`
+3. Faça push no branch `main`
+
+URL esperada:
+
+`https://belin7z.github.io/Web-pc/`
