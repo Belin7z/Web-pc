@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { AppIcon, WindowsLogo } from './components/SystemIcons'
 import './App.css'
 
 type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings'
@@ -32,6 +33,8 @@ interface DragState {
   offsetX: number
   offsetY: number
 }
+
+type WindowAnimation = 'opening' | 'minimizing'
 
 const apps: AppDefinition[] = [
   {
@@ -108,6 +111,21 @@ const drives = [
   { name: 'Windows (C:)', description: '343 GB livres de 1 TB', usage: 66 },
   { name: 'Workspace (D:)', description: '705 GB livres de 1.2 TB', usage: 41 },
   { name: 'OneDrive', description: 'Sincronizado com GitHub Pages', usage: 83 },
+]
+
+const explorerPlaces = [
+  { label: 'Início', meta: 'Acesso rápido', active: true },
+  { label: 'Galeria', meta: 'Imagens recentes' },
+  { label: 'Área de Trabalho', meta: 'Itens fixados' },
+  { label: 'Documentos', meta: 'Arquivos de projeto' },
+  { label: 'Downloads', meta: 'Assets importados' },
+]
+
+const recentFiles = [
+  { name: 'README.md', location: 'Web-pc', modified: 'Agora mesmo' },
+  { name: 'deploy.yml', location: '.github/workflows', modified: 'Hoje, 13:48' },
+  { name: 'App.tsx', location: 'src', modified: 'Hoje, 13:55' },
+  { name: 'vite.config.ts', location: 'raiz', modified: 'Hoje, 13:42' },
 ]
 
 const startRecommendations = [
@@ -257,6 +275,7 @@ function loadWindows(): WindowState[] {
 function App() {
   const desktopRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
+  const animationTimers = useRef<Partial<Record<AppId, number>>>({})
   const nextZIndex = useRef(
     loadWindows().reduce((highestZ, windowState) => Math.max(highestZ, windowState.z), 20),
   )
@@ -266,6 +285,7 @@ function App() {
   const [now, setNow] = useState(() => new Date())
   const [startOpen, setStartOpen] = useState(false)
   const [windows, setWindows] = useState<WindowState[]>(() => loadWindows())
+  const [animationStates, setAnimationStates] = useState<Partial<Record<AppId, WindowAnimation>>>({})
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
@@ -347,6 +367,18 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const timers = animationTimers.current
+
+    return () => {
+      Object.values(timers).forEach((timer) => {
+        if (timer) {
+          window.clearTimeout(timer)
+        }
+      })
+    }
+  }, [])
+
   const unlockDesktop = () => {
     setScreen('desktop')
   }
@@ -354,6 +386,37 @@ function App() {
   const lockDesktop = () => {
     setStartOpen(false)
     setScreen('lock')
+  }
+
+  const setWindowAnimation = (id: AppId, animation: WindowAnimation) => {
+    const existingTimer = animationTimers.current[id]
+
+    if (existingTimer) {
+      window.clearTimeout(existingTimer)
+    }
+
+    setAnimationStates((current) => ({ ...current, [id]: animation }))
+
+    animationTimers.current[id] = window.setTimeout(() => {
+      setAnimationStates((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+      delete animationTimers.current[id]
+    }, animation === 'opening' ? 240 : 180)
+  }
+
+  const showWindow = (id: AppId) => {
+    const z = ++nextZIndex.current
+
+    setWindows((current) =>
+      current.map((windowState) =>
+        windowState.id === id ? { ...windowState, minimized: false, z } : windowState,
+      ),
+    )
+
+    setWindowAnimation(id, 'opening')
   }
 
   const bringToFront = (id: AppId) => {
@@ -373,12 +436,15 @@ function App() {
       const z = ++nextZIndex.current
 
       if (existingWindow) {
+        setWindowAnimation(id, 'opening')
         return current.map((windowState) =>
           windowState.id === id ? { ...windowState, minimized: false, z } : windowState,
         )
       }
 
-      return [...current, createWindow(id, current.length, z)]
+      const nextWindow = createWindow(id, current.length, z)
+      window.setTimeout(() => setWindowAnimation(id, 'opening'), 0)
+      return [...current, nextWindow]
     })
   }
 
@@ -386,14 +452,15 @@ function App() {
     setWindows((current) => current.filter((windowState) => windowState.id !== id))
   }
 
-  const toggleMinimize = (id: AppId) => {
-    setWindows((current) =>
-      current.map((windowState) =>
-        windowState.id === id
-          ? { ...windowState, minimized: !windowState.minimized }
-          : windowState,
-      ),
-    )
+  const minimizeWindow = (id: AppId) => {
+    setWindowAnimation(id, 'minimizing')
+    window.setTimeout(() => {
+      setWindows((current) =>
+        current.map((windowState) =>
+          windowState.id === id ? { ...windowState, minimized: true } : windowState,
+        ),
+      )
+    }, 150)
   }
 
   const toggleMaximize = (id: AppId) => {
@@ -438,7 +505,10 @@ function App() {
   const sessionMinutes = Math.max(1, Math.floor((now.getTime() - appStartedAt) / 60000))
   const activeWallpaper = wallpapers.find((item) => item.id === wallpaper)
   const visibleWindows = [...windows]
-    .filter((windowState) => !windowState.minimized)
+    .filter(
+      (windowState) =>
+        !windowState.minimized || animationStates[windowState.id] === 'minimizing',
+    )
     .sort((left, right) => left.z - right.z)
 
   const renderWindowBody = (id: AppId) => {
@@ -503,28 +573,28 @@ function App() {
               <span className="metric-label">Acesso rápido</span>
               <div className="home-action-grid">
                 <button type="button" className="home-action-tile" onClick={() => openWindow('explorer')}>
-                  <span className="app-icon small icon-explorer"><span /><span /><span /><span /></span>
+                  <AppIcon appId="explorer" className="app-icon small" />
                   <div>
                     <strong>Arquivos</strong>
                     <p>Pastas e discos</p>
                   </div>
                 </button>
                 <button type="button" className="home-action-tile" onClick={() => openWindow('edge')}>
-                  <span className="app-icon small icon-edge"><span /><span /><span /><span /></span>
+                  <AppIcon appId="edge" className="app-icon small" />
                   <div>
                     <strong>Navegador</strong>
                     <p>Repositório e Pages</p>
                   </div>
                 </button>
                 <button type="button" className="home-action-tile" onClick={() => openWindow('terminal')}>
-                  <span className="app-icon small icon-terminal"><span /><span /><span /><span /></span>
+                  <AppIcon appId="terminal" className="app-icon small" />
                   <div>
                     <strong>Terminal</strong>
                     <p>Build e deploy</p>
                   </div>
                 </button>
                 <button type="button" className="home-action-tile" onClick={() => openWindow('settings')}>
-                  <span className="app-icon small icon-settings"><span /><span /><span /><span /></span>
+                  <AppIcon appId="settings" className="app-icon small" />
                   <div>
                     <strong>Configurações</strong>
                     <p>Tema e visual</p>
@@ -578,9 +648,9 @@ function App() {
         <div className="explorer-shell">
           <div className="explorer-commandbar">
             <div className="command-group">
-              <button type="button" className="toolbar-button">Novo</button>
-              <button type="button" className="toolbar-button">Copiar</button>
-              <button type="button" className="toolbar-button">Colar</button>
+              <button type="button" className="toolbar-button icon-only">+</button>
+              <button type="button" className="toolbar-button icon-only">-</button>
+              <button type="button" className="toolbar-button icon-only">...</button>
             </div>
             <div className="breadcrumb-bar">Este Computador &gt; Projetos &gt; Web-pc</div>
           </div>
@@ -589,12 +659,12 @@ function App() {
             <aside className="explorer-nav">
               <p className="section-title">Início rápido</p>
               <div className="nav-list">
-                {quickFolders.map((folder) => (
-                  <button key={folder.name} type="button" className="nav-item">
+                {explorerPlaces.map((place) => (
+                  <button key={place.label} type="button" className={`nav-item ${place.active ? 'active' : ''}`}>
                     <span className="folder-glyph" />
                     <span>
-                      <strong>{folder.name}</strong>
-                      <small>{folder.meta}</small>
+                      <strong>{place.label}</strong>
+                      <small>{place.meta}</small>
                     </span>
                   </button>
                 ))}
@@ -602,6 +672,26 @@ function App() {
             </aside>
 
             <div className="content-stack">
+              <section className="surface-card explorer-overview">
+                <div className="explorer-overview-top">
+                  <div>
+                    <p className="section-title">Página inicial</p>
+                    <strong>Arquivos recentes e locais favoritos</strong>
+                  </div>
+                  <button type="button" className="secondary-button">Ver tudo</button>
+                </div>
+
+                <div className="explorer-favorites">
+                  {quickFolders.map((folder) => (
+                    <button key={folder.name} type="button" className="favorite-tile">
+                      <span className="folder-icon" />
+                      <strong>{folder.name}</strong>
+                      <small>{folder.meta}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <section className="surface-card">
                 <p className="section-title">Dispositivos e unidades</p>
                 <div className="drive-list">
@@ -623,14 +713,20 @@ function App() {
               </section>
 
               <section className="surface-card">
-                <p className="section-title">Pastas</p>
-                <div className="folder-grid">
-                  {quickFolders.map((folder) => (
-                    <button key={folder.name} type="button" className="folder-card">
-                      <span className="folder-icon" />
-                      <strong>{folder.name}</strong>
-                      <small>{folder.meta}</small>
-                    </button>
+                <div className="explorer-files-header">
+                  <p className="section-title">Arquivos recentes</p>
+                  <span className="muted-text">Nome, local e modificado</span>
+                </div>
+                <div className="file-table">
+                  {recentFiles.map((file) => (
+                    <div key={file.name} className="file-row">
+                      <div className="file-cell main">
+                        <span className="recommended-doc small" />
+                        <strong>{file.name}</strong>
+                      </div>
+                      <span className="file-cell">{file.location}</span>
+                      <span className="file-cell">{file.modified}</span>
+                    </div>
                   ))}
                 </div>
               </section>
@@ -803,12 +899,7 @@ function App() {
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => openWindow(app.id)}
               >
-                <span className={`app-icon ${app.iconClass}`}>
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </span>
+                <AppIcon appId={app.id} className="app-icon desktop" />
                 <span className="icon-label">{app.name}</span>
               </button>
             )
@@ -833,18 +924,19 @@ function App() {
           {visibleWindows.map((windowState) => {
             const definition = appLookup[windowState.id]
             const inlineStyle = windowState.maximized
-              ? { zIndex: windowState.z }
+              ? ({ zIndex: windowState.z } as CSSProperties)
               : {
                   width: windowState.width,
                   height: windowState.height,
-                  transform: `translate(${windowState.x}px, ${windowState.y}px)`,
+                  '--window-x': `${windowState.x}px`,
+                  '--window-y': `${windowState.y}px`,
                   zIndex: windowState.z,
-                }
+                } as CSSProperties
 
             return (
               <article
                 key={windowState.id}
-                className={`window-frame ${windowState.maximized ? 'maximized' : ''}`}
+                className={`window-frame ${windowState.maximized ? 'maximized' : ''} ${animationStates[windowState.id] ?? ''}`}
                 style={inlineStyle}
                 onPointerDown={(event) => {
                   event.stopPropagation()
@@ -859,12 +951,7 @@ function App() {
                   }}
                 >
                   <div className="window-title">
-                    <span className={`app-icon small ${definition.iconClass}`}>
-                      <span />
-                      <span />
-                      <span />
-                      <span />
-                    </span>
+                    <AppIcon appId={definition.id} className="app-icon small" />
                     <div>
                       <strong>{definition.name}</strong>
                       <small>{definition.summary}</small>
@@ -872,7 +959,7 @@ function App() {
                   </div>
 
                   <div className="window-controls">
-                    <button type="button" aria-label="Minimizar" onClick={() => toggleMinimize(windowState.id)}>
+                    <button type="button" aria-label="Minimizar" onClick={() => minimizeWindow(windowState.id)}>
                       <span className="control-min" />
                     </button>
                     <button type="button" aria-label="Maximizar" onClick={() => toggleMaximize(windowState.id)}>
@@ -913,12 +1000,7 @@ function App() {
 
               return (
                 <button key={app.id} type="button" className="pinned-app" onClick={() => openWindow(app.id)}>
-                  <span className={`app-icon small ${app.iconClass}`}>
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                  </span>
+                  <AppIcon appId={app.id} className="app-icon small" />
                   <span>{app.name}</span>
                 </button>
               )
@@ -955,12 +1037,7 @@ function App() {
       <footer className="taskbar glass-panel" onPointerDown={(event) => event.stopPropagation()}>
         <div className="taskbar-main">
           <button type="button" className="taskbar-start" onClick={() => setStartOpen((open) => !open)}>
-            <span className="windows-glyph">
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
+            <WindowsLogo className="windows-glyph" />
           </button>
 
           {taskbarApps.map((appId) => {
@@ -981,19 +1058,14 @@ function App() {
                   }
 
                   if (windowState.minimized) {
-                    bringToFront(app.id)
+                    showWindow(app.id)
                     return
                   }
 
-                  toggleMinimize(app.id)
+                  minimizeWindow(app.id)
                 }}
               >
-                <span className={`app-icon small ${app.iconClass}`}>
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </span>
+                <AppIcon appId={app.id} className="app-icon taskbar-icon-svg" />
               </button>
             )
           })}
@@ -1015,12 +1087,7 @@ function App() {
       {screen === 'boot' ? (
         <section className="boot-screen">
           <div className="boot-center">
-            <span className="boot-logo windows-glyph">
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
+            <WindowsLogo className="boot-logo windows-glyph" />
             <p>Iniciando Web PC</p>
             <div className="boot-loader">
               <span />
