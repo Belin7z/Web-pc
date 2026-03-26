@@ -34,7 +34,7 @@ interface DragState {
   offsetY: number
 }
 
-type WindowAnimation = 'opening' | 'minimizing'
+type WindowAnimation = 'opening' | 'minimizing' | 'maximizing' | 'restoring'
 
 const apps: AppDefinition[] = [
   {
@@ -128,11 +128,70 @@ const recentFiles = [
   { name: 'vite.config.ts', location: 'raiz', modified: 'Hoje, 13:42' },
 ]
 
+const explorerDetails = {
+  'README.md': {
+    title: 'README.md',
+    type: 'Markdown',
+    location: 'E:\\web pc\\README.md',
+    info: 'Arquivo principal com instruções de uso e publicação.',
+  },
+  'deploy.yml': {
+    title: 'deploy.yml',
+    type: 'GitHub Actions',
+    location: 'E:\\web pc\\.github\\workflows\\deploy.yml',
+    info: 'Workflow responsável por build e deploy do GitHub Pages.',
+  },
+  'App.tsx': {
+    title: 'App.tsx',
+    type: 'React + TypeScript',
+    location: 'E:\\web pc\\src\\App.tsx',
+    info: 'Componente principal com desktop, janelas e lógica do sistema.',
+  },
+  'vite.config.ts': {
+    title: 'vite.config.ts',
+    type: 'Configuração Vite',
+    location: 'E:\\web pc\\vite.config.ts',
+    info: 'Define a base pública e plugins do projeto.',
+  },
+  Desktop: {
+    title: 'Desktop',
+    type: 'Pasta do sistema',
+    location: 'Acesso rápido',
+    info: 'Atalhos do ambiente principal do Web PC.',
+  },
+  Documentos: {
+    title: 'Documentos',
+    type: 'Pasta',
+    location: 'Bibliotecas',
+    info: 'Notas, estrutura de telas e documentação do projeto.',
+  },
+  Projetos: {
+    title: 'Projetos',
+    type: 'Pasta',
+    location: 'Workspace',
+    info: 'Contém o repositório Belin7z/Web-pc e arquivos relacionados.',
+  },
+  Downloads: {
+    title: 'Downloads',
+    type: 'Pasta',
+    location: 'Bibliotecas',
+    info: 'Assets, SVGs e referências importadas para a interface.',
+  },
+} as const
+
 const startRecommendations = [
   { title: 'README.md', meta: 'Atualizado há pouco' },
   { title: 'deploy.yml', meta: 'Workflow de publicação' },
   { title: 'vite.config.ts', meta: 'Base /Web-pc/' },
 ]
+
+const explorerSelectionMap = {
+  'Início': 'README.md',
+  Galeria: 'Downloads',
+  'Área de Trabalho': 'Desktop',
+  Documentos: 'Documentos',
+  Downloads: 'Downloads',
+} as const
 
 const terminalCommands = [
   'npm install',
@@ -284,6 +343,9 @@ function App() {
   const [wallpaper, setWallpaper] = useState<WallpaperId>(() => loadWallpaper())
   const [now, setNow] = useState(() => new Date())
   const [startOpen, setStartOpen] = useState(false)
+  const [startQuery, setStartQuery] = useState('')
+  const [showAllApps, setShowAllApps] = useState(false)
+  const [selectedExplorerItem, setSelectedExplorerItem] = useState<keyof typeof explorerDetails>('README.md')
   const [windows, setWindows] = useState<WindowState[]>(() => loadWindows())
   const [animationStates, setAnimationStates] = useState<Partial<Record<AppId, WindowAnimation>>>({})
 
@@ -383,8 +445,25 @@ function App() {
     setScreen('desktop')
   }
 
-  const lockDesktop = () => {
+  const closeStartMenu = () => {
     setStartOpen(false)
+    setStartQuery('')
+    setShowAllApps(false)
+  }
+
+  const toggleStartMenu = () => {
+    if (startOpen) {
+      closeStartMenu()
+      return
+    }
+
+    setStartQuery('')
+    setShowAllApps(false)
+    setStartOpen(true)
+  }
+
+  const lockDesktop = () => {
+    closeStartMenu()
     setScreen('lock')
   }
 
@@ -430,7 +509,7 @@ function App() {
   }
 
   const openWindow = (id: AppId) => {
-    setStartOpen(false)
+    closeStartMenu()
     setWindows((current) => {
       const existingWindow = current.find((windowState) => windowState.id === id)
       const z = ++nextZIndex.current
@@ -464,7 +543,12 @@ function App() {
   }
 
   const toggleMaximize = (id: AppId) => {
+    const targetWindow = windows.find((windowState) => windowState.id === id)
     const z = ++nextZIndex.current
+
+    if (targetWindow) {
+      setWindowAnimation(id, targetWindow.maximized ? 'restoring' : 'maximizing')
+    }
 
     setWindows((current) =>
       current.map((windowState) =>
@@ -504,6 +588,24 @@ function App() {
 
   const sessionMinutes = Math.max(1, Math.floor((now.getTime() - appStartedAt) / 60000))
   const activeWallpaper = wallpapers.find((item) => item.id === wallpaper)
+  const normalizedQuery = startQuery.trim().toLocaleLowerCase('pt-BR')
+  const filteredApps = apps.filter((app) => {
+    if (!normalizedQuery) {
+      return true
+    }
+
+    const haystack = `${app.name} ${app.summary}`.toLocaleLowerCase('pt-BR')
+    return haystack.includes(normalizedQuery)
+  })
+  const filteredRecommendations = startRecommendations.filter((item) => {
+    if (!normalizedQuery) {
+      return true
+    }
+
+    const haystack = `${item.title} ${item.meta}`.toLocaleLowerCase('pt-BR')
+    return haystack.includes(normalizedQuery)
+  })
+  const explorerDetail = explorerDetails[selectedExplorerItem]
   const visibleWindows = [...windows]
     .filter(
       (windowState) =>
@@ -655,12 +757,17 @@ function App() {
             <div className="breadcrumb-bar">Este Computador &gt; Projetos &gt; Web-pc</div>
           </div>
 
-          <div className="explorer-layout">
+          <div className="explorer-layout has-details">
             <aside className="explorer-nav">
               <p className="section-title">Início rápido</p>
               <div className="nav-list">
                 {explorerPlaces.map((place) => (
-                  <button key={place.label} type="button" className={`nav-item ${place.active ? 'active' : ''}`}>
+                  <button
+                    key={place.label}
+                    type="button"
+                    className={`nav-item ${explorerSelectionMap[place.label as keyof typeof explorerSelectionMap] === selectedExplorerItem ? 'active' : ''}`}
+                    onClick={() => setSelectedExplorerItem(explorerSelectionMap[place.label as keyof typeof explorerSelectionMap])}
+                  >
                     <span className="folder-glyph" />
                     <span>
                       <strong>{place.label}</strong>
@@ -683,7 +790,12 @@ function App() {
 
                 <div className="explorer-favorites">
                   {quickFolders.map((folder) => (
-                    <button key={folder.name} type="button" className="favorite-tile">
+                    <button
+                      key={folder.name}
+                      type="button"
+                      className={`favorite-tile ${selectedExplorerItem === folder.name ? 'active' : ''}`}
+                      onClick={() => setSelectedExplorerItem(folder.name as keyof typeof explorerDetails)}
+                    >
                       <span className="folder-icon" />
                       <strong>{folder.name}</strong>
                       <small>{folder.meta}</small>
@@ -719,18 +831,51 @@ function App() {
                 </div>
                 <div className="file-table">
                   {recentFiles.map((file) => (
-                    <div key={file.name} className="file-row">
+                    <button
+                      key={file.name}
+                      type="button"
+                      className={`file-row ${selectedExplorerItem === file.name ? 'active' : ''}`}
+                      onClick={() => setSelectedExplorerItem(file.name as keyof typeof explorerDetails)}
+                    >
                       <div className="file-cell main">
                         <span className="recommended-doc small" />
                         <strong>{file.name}</strong>
                       </div>
                       <span className="file-cell">{file.location}</span>
                       <span className="file-cell">{file.modified}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </section>
             </div>
+
+            <aside className="surface-card explorer-details">
+              <p className="section-title">Painel de detalhes</p>
+              <div className="details-preview">
+                <span className="recommended-doc" />
+              </div>
+              <div className="details-copy">
+                <strong>{explorerDetail.title}</strong>
+                <span>{explorerDetail.type}</span>
+              </div>
+              <dl className="details-meta">
+                <div>
+                  <dt>Local</dt>
+                  <dd>{explorerDetail.location}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>Disponível neste dispositivo</dd>
+                </div>
+                <div>
+                  <dt>Descrição</dt>
+                  <dd>{explorerDetail.info}</dd>
+                </div>
+              </dl>
+              <button type="button" className="secondary-button details-action">
+                Abrir propriedades
+              </button>
+            </aside>
           </div>
         </div>
       )
@@ -885,7 +1030,7 @@ function App() {
       <main
         className="desktop-surface"
         ref={desktopRef}
-        onPointerDown={() => setStartOpen(false)}
+        onPointerDown={closeStartMenu}
       >
         <section className="desktop-icons">
           {desktopShortcuts.map((appId) => {
@@ -923,15 +1068,13 @@ function App() {
         <section className="window-stage">
           {visibleWindows.map((windowState) => {
             const definition = appLookup[windowState.id]
-            const inlineStyle = windowState.maximized
-              ? ({ zIndex: windowState.z } as CSSProperties)
-              : {
-                  width: windowState.width,
-                  height: windowState.height,
-                  '--window-x': `${windowState.x}px`,
-                  '--window-y': `${windowState.y}px`,
-                  zIndex: windowState.z,
-                } as CSSProperties
+            const inlineStyle = {
+              width: windowState.maximized ? undefined : windowState.width,
+              height: windowState.maximized ? undefined : windowState.height,
+              '--window-x': `${windowState.x}px`,
+              '--window-y': `${windowState.y}px`,
+              zIndex: windowState.z,
+            } as CSSProperties
 
             return (
               <article
@@ -984,28 +1127,52 @@ function App() {
       </main>
       {startOpen ? (
         <section className="start-menu glass-panel" onPointerDown={(event) => event.stopPropagation()}>
-          <div className="start-search">
+          <label className="start-search">
             <span className="search-glyph" />
-            <span>Pesquisar apps, configurações e documentos</span>
-          </div>
+            <input
+              className="start-search-input"
+              type="text"
+              value={startQuery}
+              onChange={(event) => setStartQuery(event.target.value)}
+              placeholder="Pesquisar apps, configurações e documentos"
+              autoFocus
+            />
+          </label>
 
           <div className="start-section-header">
-            <strong>Fixados</strong>
-            <span>Todos</span>
+            <strong>{showAllApps || normalizedQuery ? 'Todos os apps' : 'Fixados'}</strong>
+            <button
+              type="button"
+              className="start-toggle-button"
+              onClick={() => setShowAllApps((current) => !current)}
+            >
+              {showAllApps ? 'Voltar' : 'Todos os apps'}
+            </button>
           </div>
 
-          <div className="pinned-grid">
-            {taskbarApps.map((appId) => {
-              const app = appLookup[appId]
-
-              return (
-                <button key={app.id} type="button" className="pinned-app" onClick={() => openWindow(app.id)}>
+          {filteredApps.length > 0 ? (
+            <div className={showAllApps || normalizedQuery ? 'all-apps-list' : 'pinned-grid'}>
+              {(showAllApps || normalizedQuery ? filteredApps : taskbarApps.map((appId) => appLookup[appId])).map((app) => (
+                <button
+                  key={app.id}
+                  type="button"
+                  className={showAllApps || normalizedQuery ? 'all-apps-item' : 'pinned-app'}
+                  onClick={() => openWindow(app.id)}
+                >
                   <AppIcon appId={app.id} className="app-icon small" />
-                  <span>{app.name}</span>
+                  <span>
+                    <strong>{app.name}</strong>
+                    {showAllApps || normalizedQuery ? <small>{app.summary}</small> : null}
+                  </span>
                 </button>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="start-empty-state">
+              <strong>Nenhum resultado encontrado</strong>
+              <span>Tente pesquisar por Explorador, Edge ou Configurações.</span>
+            </div>
+          )}
 
           <div className="start-section-header">
             <strong>Recomendados</strong>
@@ -1013,7 +1180,7 @@ function App() {
           </div>
 
           <div className="recommended-list">
-            {startRecommendations.map((item) => (
+            {filteredRecommendations.map((item) => (
               <div key={item.title} className="recommended-item">
                 <span className="recommended-doc" />
                 <span>
@@ -1036,7 +1203,7 @@ function App() {
 
       <footer className="taskbar glass-panel" onPointerDown={(event) => event.stopPropagation()}>
         <div className="taskbar-main">
-          <button type="button" className="taskbar-start" onClick={() => setStartOpen((open) => !open)}>
+          <button type="button" className="taskbar-start" onClick={toggleStartMenu}>
             <WindowsLogo className="windows-glyph" />
           </button>
 
@@ -1101,6 +1268,12 @@ function App() {
       {screen === 'lock' ? (
         <section className="lock-screen" onClick={unlockDesktop}>
           <div className="lock-overlay" />
+          <div className="lock-topline">
+            <div className="lock-weather">
+              <span>26°C</span>
+              <small>São Paulo</small>
+            </div>
+          </div>
           <div className="lock-content" onClick={(event) => event.stopPropagation()}>
             <div className="lock-clock">
               <strong>{timeLabel}</strong>
@@ -1113,12 +1286,21 @@ function App() {
                 <strong>Belin7z</strong>
                 <span>Web PC</span>
               </div>
+              <label className="signin-field">
+                <span>PIN</span>
+                <input type="password" value="0000" readOnly aria-label="PIN" />
+              </label>
               <button type="button" className="signin-button" onClick={unlockDesktop}>
                 Entrar
               </button>
+              <button type="button" className="signin-alt">Opções de entrada</button>
             </div>
 
             <p className="lock-hint">Pressione Enter ou clique em Entrar</p>
+          </div>
+          <div className="lock-footer">
+            <span className="tray-icon wifi" />
+            <span className="tray-icon battery" />
           </div>
         </section>
       ) : null}
