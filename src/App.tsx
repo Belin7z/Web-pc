@@ -36,10 +36,10 @@ interface DragState {
 const apps: AppDefinition[] = [
   {
     id: 'home',
-    name: 'Inicio',
-    summary: 'Resumo do sistema com widgets e status da sessao.',
+    name: 'Início',
+    summary: 'Resumo do sistema com widgets e status da sessão.',
     iconClass: 'icon-home',
-    window: { width: 700, height: 470 },
+    window: { width: 840, height: 560 },
   },
   {
     id: 'explorer',
@@ -51,7 +51,7 @@ const apps: AppDefinition[] = [
   {
     id: 'terminal',
     name: 'Terminal',
-    summary: 'Console para build, git e publicacao.',
+    summary: 'Console para build, git e publicação.',
     iconClass: 'icon-terminal',
     window: { width: 700, height: 430 },
   },
@@ -64,8 +64,8 @@ const apps: AppDefinition[] = [
   },
   {
     id: 'settings',
-    name: 'Configuracoes',
-    summary: 'Personalizacao do Web PC e deploy.',
+    name: 'Configurações',
+    summary: 'Personalização do Web PC e deploy.',
     iconClass: 'icon-settings',
     window: { width: 760, height: 520 },
   },
@@ -83,7 +83,7 @@ const wallpapers: Array<{
   {
     id: 'bloom',
     name: 'Bloom',
-    description: 'Wallpaper azul com dobras no estilo padrao do Windows 11.',
+    description: 'Wallpaper azul com dobras no estilo padrão do Windows 11.',
   },
   {
     id: 'flow',
@@ -93,15 +93,15 @@ const wallpapers: Array<{
   {
     id: 'night',
     name: 'Night',
-    description: 'Versao escura inspirada no tema noturno do Windows.',
+    description: 'Versão escura inspirada no tema noturno do Windows.',
   },
 ]
 
 const quickFolders = [
   { name: 'Desktop', meta: 'Atalhos do sistema' },
-  { name: 'Documentos', meta: 'Anotacoes e estrutura' },
-  { name: 'Projetos', meta: 'Repositorio Web-pc' },
-  { name: 'Downloads', meta: 'Assets e referencias' },
+  { name: 'Documentos', meta: 'Anotações e estrutura' },
+  { name: 'Projetos', meta: 'Repositório Web-pc' },
+  { name: 'Downloads', meta: 'Assets e referências' },
 ]
 
 const drives = [
@@ -111,8 +111,8 @@ const drives = [
 ]
 
 const startRecommendations = [
-  { title: 'README.md', meta: 'Atualizado ha pouco' },
-  { title: 'deploy.yml', meta: 'Workflow de publicacao' },
+  { title: 'README.md', meta: 'Atualizado há pouco' },
+  { title: 'deploy.yml', meta: 'Workflow de publicação' },
   { title: 'vite.config.ts', meta: 'Base /Web-pc/' },
 ]
 
@@ -126,19 +126,19 @@ const terminalCommands = [
 
 const webLinks = [
   {
-    title: 'Repositorio GitHub',
+    title: 'Repositório GitHub',
     href: 'https://github.com/Belin7z/Web-pc',
-    description: 'Codigo fonte principal do Web PC.',
+    description: 'Código-fonte principal do Web PC.',
   },
   {
     title: 'GitHub Pages',
     href: 'https://pages.github.com/',
-    description: 'Hospedagem estatica para publicar o projeto.',
+    description: 'Hospedagem estática para publicar o projeto.',
   },
   {
     title: 'Preview',
     href: '#desktop-preview',
-    description: 'Usar a propria interface como demonstracao.',
+    description: 'Usar a própria interface como demonstração.',
   },
 ]
 
@@ -444,61 +444,129 @@ function App() {
   const renderWindowBody = (id: AppId) => {
     if (id === 'home') {
       return (
-        <div className="content-stack">
+        <div className="home-layout">
           <section className="home-hero" id="desktop-preview">
-            <div>
-              <p className="eyebrow">Web PC</p>
-              <h1>Desktop web com linguagem de Windows 11.</h1>
+            <div className="home-hero-copy">
+              <p className="eyebrow">Central do sistema</p>
+              <h1>Início com cara de painel principal, não de janela genérica.</h1>
               <p className="hero-copy">
-                Barra centralizada, wallpaper bloom, superficies em mica, janelas
-                arredondadas, lock screen, boot screen e estado salvo localmente.
+                Área inicial redesenhada para funcionar como hub do Web PC, com
+                visão geral da sessão, atalhos rápidos e leitura clara do estado
+                atual do desktop.
               </p>
             </div>
 
-            <div className="hero-actions">
-              <button type="button" className="primary-button" onClick={() => openWindow('explorer')}>
-                Abrir Explorador
-              </button>
-              <button type="button" className="secondary-button" onClick={() => openWindow('edge')}>
-                Abrir Edge
-              </button>
+            <div className="home-hero-side">
+              <div className="home-badge">
+                <span className="metric-label">Status</span>
+                <strong>Online</strong>
+                <p>GitHub Pages pronto para publicar</p>
+              </div>
+              <div className="hero-actions">
+                <button type="button" className="primary-button" onClick={() => openWindow('explorer')}>
+                  Abrir Explorador
+                </button>
+                <button type="button" className="secondary-button" onClick={() => openWindow('edge')}>
+                  Abrir Edge
+                </button>
+              </div>
             </div>
           </section>
 
-          <section className="widget-grid">
-            <article className="surface-card large-widget">
-              <span className="metric-label">Sessao</span>
-              <strong>{sessionMinutes} min</strong>
-              <p>Relogio ativo, taskbar interativa e janelas restauradas localmente.</p>
+          <section className="home-dashboard">
+            <article className="surface-card home-profile-card">
+              <span className="metric-label">Sessão</span>
+              <div className="home-profile-row">
+                <span className="profile-avatar large">B</span>
+                <div>
+                  <strong>Belin7z</strong>
+                  <p>{sessionMinutes} min ativos nesta sessão</p>
+                </div>
+              </div>
+              <div className="home-mini-stats">
+                <div>
+                  <small>Janelas</small>
+                  <strong>{windows.length}</strong>
+                </div>
+                <div>
+                  <small>Tema</small>
+                  <strong>{activeWallpaper?.name}</strong>
+                </div>
+                <div>
+                  <small>Hora</small>
+                  <strong>{timeLabel}</strong>
+                </div>
+              </div>
             </article>
-            <article className="surface-card">
-              <span className="metric-label">GitHub Pages</span>
-              <strong>Pronto</strong>
-              <p>Build Vite com base `/Web-pc/` e workflow para deploy.</p>
-            </article>
-            <article className="surface-card">
-              <span className="metric-label">Tema</span>
-              <strong>{activeWallpaper?.name}</strong>
-              <p>Wallpaper e layout das janelas persistem no navegador.</p>
+
+            <article className="surface-card home-actions-card">
+              <span className="metric-label">Acesso rápido</span>
+              <div className="home-action-grid">
+                <button type="button" className="home-action-tile" onClick={() => openWindow('explorer')}>
+                  <span className="app-icon small icon-explorer"><span /><span /><span /><span /></span>
+                  <div>
+                    <strong>Arquivos</strong>
+                    <p>Pastas e discos</p>
+                  </div>
+                </button>
+                <button type="button" className="home-action-tile" onClick={() => openWindow('edge')}>
+                  <span className="app-icon small icon-edge"><span /><span /><span /><span /></span>
+                  <div>
+                    <strong>Navegador</strong>
+                    <p>Repositório e Pages</p>
+                  </div>
+                </button>
+                <button type="button" className="home-action-tile" onClick={() => openWindow('terminal')}>
+                  <span className="app-icon small icon-terminal"><span /><span /><span /><span /></span>
+                  <div>
+                    <strong>Terminal</strong>
+                    <p>Build e deploy</p>
+                  </div>
+                </button>
+                <button type="button" className="home-action-tile" onClick={() => openWindow('settings')}>
+                  <span className="app-icon small icon-settings"><span /><span /><span /><span /></span>
+                  <div>
+                    <strong>Configurações</strong>
+                    <p>Tema e visual</p>
+                  </div>
+                </button>
+              </div>
             </article>
           </section>
 
-          <section className="split-grid">
+          <section className="home-bottom-grid">
             <article className="surface-card">
-              <p className="section-title">Recursos</p>
+              <p className="section-title">Recursos ativos</p>
               <ul className="feature-list">
                 <li>Taskbar central no estilo Windows 11.</li>
-                <li>Start menu com apps fixados e recomendados.</li>
-                <li>Apps simulados para Explorer, Edge, Terminal e Configuracoes.</li>
+                <li>Start Menu com apps fixados e recomendados.</li>
+                <li>Boot screen, lock screen e restauração local da sessão.</li>
               </ul>
             </article>
             <article className="surface-card">
-              <p className="section-title">Persistencia</p>
+              <p className="section-title">Estado salvo</p>
               <ul className="feature-list">
-                <li>Wallpaper salvo com localStorage.</li>
-                <li>Janelas abertas e posicoes restauradas ao recarregar.</li>
-                <li>Lock screen pode ser ativada pelo menu iniciar.</li>
+                <li>Wallpaper salvo com `localStorage`.</li>
+                <li>Janelas abertas e posições restauradas ao recarregar.</li>
+                <li>Bloqueio da sessão pelo botão de energia do menu Iniciar.</li>
               </ul>
+            </article>
+            <article className="surface-card">
+              <p className="section-title">Publicação</p>
+              <div className="home-link-list">
+                {webLinks.map((link) => (
+                  <a
+                    key={link.title}
+                    className="home-link-item"
+                    href={link.href}
+                    target={link.href.startsWith('http') ? '_blank' : undefined}
+                    rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+                  >
+                    <strong>{link.title}</strong>
+                    <span>{link.description}</span>
+                  </a>
+                ))}
+              </div>
             </article>
           </section>
         </div>
@@ -519,7 +587,7 @@ function App() {
 
           <div className="explorer-layout">
             <aside className="explorer-nav">
-              <p className="section-title">Inicio rapido</p>
+              <p className="section-title">Início rápido</p>
               <div className="nav-list">
                 {quickFolders.map((folder) => (
                   <button key={folder.name} type="button" className="nav-item">
@@ -594,10 +662,10 @@ function App() {
           </section>
 
           <section className="surface-card">
-            <p className="section-title">Acoes</p>
+            <p className="section-title">Ações</p>
             <div className="hero-actions">
               <button type="button" className="secondary-button" onClick={() => openWindow('settings')}>
-                Abrir configuracoes
+                Abrir configurações
               </button>
               <button type="button" className="secondary-button" onClick={() => openWindow('edge')}>
                 Abrir navegador
@@ -630,11 +698,11 @@ function App() {
 
             <div className="edge-content">
               <div className="edge-surface">
-                <p className="eyebrow">Publicacao</p>
+                <p className="eyebrow">Publicação</p>
                 <h2>Projeto preparado para GitHub Pages.</h2>
                 <p className="hero-copy">
-                  O build usa Vite com base do repositorio e GitHub Actions para
-                  publicar o conteudo de `dist` automaticamente.
+                  O build usa Vite com base do repositório e GitHub Actions para
+                  publicar o conteúdo de `dist` automaticamente.
                 </p>
               </div>
 
@@ -662,7 +730,7 @@ function App() {
       <div className="settings-shell">
         <aside className="settings-nav">
           <p className="section-title">Categorias</p>
-          <button type="button" className="settings-link active">Personalizacao</button>
+          <button type="button" className="settings-link active">Personalização</button>
           <button type="button" className="settings-link">Sistema</button>
           <button type="button" className="settings-link">Rede</button>
           <button type="button" className="settings-link">Windows Update</button>
@@ -691,7 +759,7 @@ function App() {
             <article className="surface-card">
               <p className="section-title">Ambiente</p>
               <ul className="feature-list">
-                <li>Online: {navigator.onLine ? 'sim' : 'nao'}</li>
+                <li>Online: {navigator.onLine ? 'sim' : 'não'}</li>
                 <li>Idioma: {navigator.language}</li>
                 <li>Wallpaper ativo: {activeWallpaper?.name}</li>
               </ul>
@@ -700,7 +768,7 @@ function App() {
             <article className="surface-card">
               <p className="section-title">Deploy</p>
               <ul className="feature-list">
-                <li>Repositorio: Belin7z/Web-pc</li>
+                <li>Repositório: Belin7z/Web-pc</li>
                 <li>Base: /Web-pc/</li>
                 <li>Workflow: GitHub Actions</li>
               </ul>
@@ -750,9 +818,9 @@ function App() {
         <aside className="desktop-widgets">
           <article className="widget-card glass-panel weather-widget">
             <span className="widget-title">Widgets</span>
-            <strong>26 C</strong>
-            <p>Sao Paulo</p>
-            <small>Desktop Windows-like em execucao</small>
+            <strong>26°C</strong>
+            <p>São Paulo</p>
+            <small>Desktop inspirado no Windows em execução</small>
           </article>
           <article className="widget-card glass-panel date-widget">
             <span className="widget-title">Hoje</span>
@@ -831,7 +899,7 @@ function App() {
         <section className="start-menu glass-panel" onPointerDown={(event) => event.stopPropagation()}>
           <div className="start-search">
             <span className="search-glyph" />
-            <span>Pesquisar apps, configuracoes e documentos</span>
+            <span>Pesquisar apps, configurações e documentos</span>
           </div>
 
           <div className="start-section-header">
