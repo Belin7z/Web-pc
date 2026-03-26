@@ -219,6 +219,27 @@ const webLinks = [
   },
 ]
 
+const browserHighlights = [
+  {
+    title: 'GitHub do projeto',
+    meta: 'Belin7z/Web-pc',
+    description: 'Abrir o repositório, revisar commits e acompanhar a evolução do Web PC.',
+    href: 'https://github.com/Belin7z/Web-pc',
+  },
+  {
+    title: 'GitHub Pages',
+    meta: 'Publicação',
+    description: 'Visualizar a versão hospedada e validar se o deploy saiu como esperado.',
+    href: 'https://pages.github.com/',
+  },
+  {
+    title: 'Painel do sistema',
+    meta: 'Desktop local',
+    description: 'Continuar navegando pelo desktop virtual usando a própria interface.',
+    href: '#desktop-preview',
+  },
+] as const
+
 const desktopShortcuts: AppId[] = ['explorer', 'edge', 'terminal', 'settings']
 const taskbarApps: AppId[] = ['edge', 'explorer', 'terminal', 'settings']
 const startMenuApps = apps.filter((app) => app.id !== 'home')
@@ -939,28 +960,82 @@ function App() {
             </div>
 
             <div className="edge-content">
-              <div className="edge-surface">
-                <p className="eyebrow">Publicação</p>
-                <h2>Projeto preparado para GitHub Pages.</h2>
-                <p className="hero-copy">
-                  O build usa Vite com base do repositório e GitHub Actions para
-                  publicar o conteúdo de `dist` automaticamente.
-                </p>
+              <div className="edge-home-hero">
+                <div className="edge-surface">
+                  <p className="eyebrow">Navegador</p>
+                  <h2>Abra o projeto, publique e navegue sem sair do Web PC.</h2>
+                  <p className="hero-copy">
+                    Página inicial redesenhada para parecer mais com um navegador real,
+                    com pesquisa, atalhos rápidos e áreas de acesso frequente.
+                  </p>
+                </div>
+
+                <div className="browser-search-card">
+                  <label className="browser-searchbar">
+                    <span className="search-glyph" />
+                    <input type="text" value="Pesquisar na Web ou digitar uma URL" readOnly />
+                  </label>
+                  <div className="browser-shortcuts">
+                    {browserHighlights.map((item) => (
+                      <a
+                        key={item.title}
+                        className="browser-shortcut"
+                        href={item.href}
+                        target={item.href.startsWith('http') ? '_blank' : undefined}
+                        rel={item.href.startsWith('http') ? 'noreferrer' : undefined}
+                      >
+                        <strong>{item.title}</strong>
+                        <small>{item.meta}</small>
+                      </a>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              <div className="link-grid">
-                {webLinks.map((link) => (
-                  <a
-                    key={link.title}
-                    className="surface-card quick-link"
-                    href={link.href}
-                    target={link.href.startsWith('http') ? '_blank' : undefined}
-                    rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
-                  >
-                    <p className="section-title">{link.title}</p>
-                    <span className="muted-text">{link.description}</span>
-                  </a>
-                ))}
+              <div className="browser-sections">
+                <section className="surface-card browser-feed">
+                  <div className="browser-section-head">
+                    <div>
+                      <p className="section-title">Acesso rápido</p>
+                      <strong>Links mais usados neste desktop</strong>
+                    </div>
+                    <span className="muted-text">Sincronizado com o projeto</span>
+                  </div>
+
+                  <div className="browser-card-grid">
+                    {browserHighlights.map((item) => (
+                      <a
+                        key={item.title}
+                        className="browser-link-card"
+                        href={item.href}
+                        target={item.href.startsWith('http') ? '_blank' : undefined}
+                        rel={item.href.startsWith('http') ? 'noreferrer' : undefined}
+                      >
+                        <span className="browser-card-badge">{item.meta}</span>
+                        <strong>{item.title}</strong>
+                        <p>{item.description}</p>
+                      </a>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="surface-card browser-sidebar">
+                  <p className="section-title">Navegação</p>
+                  <div className="browser-sidebar-list">
+                    {webLinks.map((link) => (
+                      <a
+                        key={link.title}
+                        className="quick-link browser-rail-link"
+                        href={link.href}
+                        target={link.href.startsWith('http') ? '_blank' : undefined}
+                        rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+                      >
+                        <strong>{link.title}</strong>
+                        <span className="muted-text">{link.description}</span>
+                      </a>
+                    ))}
+                  </div>
+                </section>
               </div>
             </div>
           </section>
