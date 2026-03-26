@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { AppIcon, WindowsLogo } from './components/SystemIcons'
+import { AppIcon, FileTypeIcon, WindowsLogo } from './components/SystemIcons'
 import { projectTree, type ProjectTreeNode } from './generated/projectTree'
 import './App.css'
 
@@ -36,6 +36,21 @@ interface DragState {
 }
 
 type WindowAnimation = 'opening' | 'minimizing' | 'maximizing' | 'restoring'
+type ExplorerSortBy = 'name' | 'updated' | 'type' | 'size'
+type ExplorerViewMode = 'icons' | 'list' | 'details'
+
+interface ExplorerTab {
+  id: string
+  title: string
+  rootPath: string
+  currentPath: string
+}
+
+interface ExplorerContextMenuState {
+  x: number
+  y: number
+  nodePath: string
+}
 
 const apps: AppDefinition[] = [
   {
@@ -367,6 +382,76 @@ function flattenExplorerFiles(currentNode: ProjectTreeNode): ProjectTreeNode[] {
   return currentNode.children.flatMap((child) => flattenExplorerFiles(child))
 }
 
+function getRepoRootPath(pathValue: string) {
+  const pathParts = pathValue.split('/')
+
+  if (pathParts.length >= 2) {
+    return pathParts.slice(0, 2).join('/')
+  }
+
+  return pathValue
+}
+
+function isRepoRoot(node: ProjectTreeNode) {
+  return node.kind === 'folder' && node.path.split('/').length === 2
+}
+
+function isPreviewableFile(node: ProjectTreeNode) {
+  if (node.kind !== 'file') {
+    return false
+  }
+
+  return ['md', 'json', 'ts', 'tsx', 'js', 'css', 'html', 'yml'].includes(node.extension ?? '')
+}
+
+function sortExplorerEntries(entries: ProjectTreeNode[], sortBy: ExplorerSortBy) {
+  return [...entries].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === 'folder' ? -1 : 1
+    }
+
+    if (sortBy === 'updated') {
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    }
+
+    if (sortBy === 'type') {
+      return getExplorerNodeType(left).localeCompare(getExplorerNodeType(right), 'pt-BR', { sensitivity: 'base' })
+    }
+
+    if (sortBy === 'size') {
+      return right.size - left.size
+    }
+
+    return left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' })
+  })
+}
+
+function getNextExplorerSortBy(current: ExplorerSortBy): ExplorerSortBy {
+  if (current === 'name') return 'updated'
+  if (current === 'updated') return 'type'
+  if (current === 'type') return 'size'
+  return 'name'
+}
+
+function getExplorerSortLabel(sortBy: ExplorerSortBy) {
+  if (sortBy === 'updated') return 'Mais recentes'
+  if (sortBy === 'type') return 'Tipo'
+  if (sortBy === 'size') return 'Tamanho'
+  return 'Nome'
+}
+
+function getNextExplorerViewMode(current: ExplorerViewMode): ExplorerViewMode {
+  if (current === 'icons') return 'list'
+  if (current === 'list') return 'details'
+  return 'icons'
+}
+
+function getExplorerViewLabel(viewMode: ExplorerViewMode) {
+  if (viewMode === 'icons') return 'Ícones'
+  if (viewMode === 'list') return 'Lista'
+  return 'Detalhes'
+}
+
 function App() {
   const initialExplorerFolder = projectTree
   const desktopRef = useRef<HTMLDivElement | null>(null)
@@ -382,8 +467,15 @@ function App() {
   const [startOpen, setStartOpen] = useState(false)
   const [startQuery, setStartQuery] = useState('')
   const [showAllApps, setShowAllApps] = useState(false)
+  const [explorerTabs, setExplorerTabs] = useState<ExplorerTab[]>([])
+  const [activeExplorerTabId, setActiveExplorerTabId] = useState<string | null>(null)
   const [explorerPath, setExplorerPath] = useState(initialExplorerFolder.path)
   const [selectedExplorerPath, setSelectedExplorerPath] = useState(initialExplorerFolder.path)
+  const [explorerSearch, setExplorerSearch] = useState('')
+  const [explorerSortBy, setExplorerSortBy] = useState<ExplorerSortBy>('name')
+  const [explorerViewMode, setExplorerViewMode] = useState<ExplorerViewMode>('details')
+  const [explorerTransitionKey, setExplorerTransitionKey] = useState(0)
+  const [explorerContextMenu, setExplorerContextMenu] = useState<ExplorerContextMenuState | null>(null)
   const [windows, setWindows] = useState<WindowState[]>(() => loadWindows())
   const [animationStates, setAnimationStates] = useState<Partial<Record<AppId, WindowAnimation>>>({})
 
@@ -423,6 +515,18 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(storageKeys.windows, JSON.stringify(windows))
   }, [windows])
+
+  useEffect(() => {
+    const closeContextMenu = () => setExplorerContextMenu(null)
+
+    window.addEventListener('click', closeContextMenu)
+    window.addEventListener('contextmenu', closeContextMenu)
+
+    return () => {
+      window.removeEventListener('click', closeContextMenu)
+      window.removeEventListener('contextmenu', closeContextMenu)
+    }
+  }, [])
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -620,8 +724,39 @@ function App() {
       return
     }
 
+    const repoRootPath = getRepoRootPath(pathValue)
+    const repoNode = findExplorerNode(repoRootPath)
+
+    if (repoNode && isRepoRoot(repoNode)) {
+      setExplorerTabs((current) => {
+        const existingTab = current.find((tab) => tab.rootPath === repoRootPath)
+
+        if (existingTab) {
+          return current.map((tab) =>
+            tab.rootPath === repoRootPath ? { ...tab, currentPath: pathValue } : tab,
+          )
+        }
+
+        return [
+          ...current,
+          {
+            id: repoRootPath,
+            title: repoNode.name,
+            rootPath: repoRootPath,
+            currentPath: pathValue,
+          },
+        ]
+      })
+      setActiveExplorerTabId(repoRootPath)
+    } else if (pathValue === projectTree.path) {
+      setActiveExplorerTabId(null)
+    }
+
     setExplorerPath(pathValue)
     setSelectedExplorerPath(pathValue)
+    setExplorerSearch('')
+    setExplorerTransitionKey((current) => current + 1)
+    setExplorerContextMenu(null)
   }
 
   const goUpExplorerFolder = () => {
@@ -630,6 +765,59 @@ function App() {
     if (parentPath !== explorerPath) {
       openExplorerFolder(parentPath)
     }
+  }
+
+  const closeExplorerTab = (tabId: string) => {
+    setExplorerTabs((current) => {
+      const nextTabs = current.filter((tab) => tab.id !== tabId)
+
+      if (activeExplorerTabId === tabId) {
+        const nextActiveTab = nextTabs.at(-1)
+
+        if (nextActiveTab) {
+          setActiveExplorerTabId(nextActiveTab.id)
+          setExplorerPath(nextActiveTab.currentPath)
+          setSelectedExplorerPath(nextActiveTab.currentPath)
+        } else {
+          setActiveExplorerTabId(null)
+          setExplorerPath(projectTree.path)
+          setSelectedExplorerPath(projectTree.path)
+        }
+      }
+
+      setExplorerSearch('')
+      return nextTabs
+    })
+  }
+
+  const openExplorerEntry = (node: ProjectTreeNode) => {
+    if (node.kind === 'folder') {
+      openExplorerFolder(node.path)
+      return
+    }
+
+    setSelectedExplorerPath(node.path)
+    setExplorerContextMenu(null)
+  }
+
+  const openExplorerContextMenu = (event: React.MouseEvent, node: ProjectTreeNode) => {
+    event.preventDefault()
+    setSelectedExplorerPath(node.path)
+    setExplorerContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      nodePath: node.path,
+    })
+  }
+
+  const copyExplorerPath = async (pathValue: string) => {
+    try {
+      await navigator.clipboard.writeText(pathValue.replaceAll('/', '\\'))
+    } catch {
+      // Ignore clipboard failures in unsupported environments.
+    }
+
+    setExplorerContextMenu(null)
   }
 
   const timeLabel = new Intl.DateTimeFormat('pt-BR', {
@@ -663,26 +851,47 @@ function App() {
     return haystack.includes(normalizedQuery)
   })
   const explorerCurrentNode = findExplorerNode(explorerPath) ?? initialExplorerFolder
-  const explorerEntries = isFolderNode(explorerCurrentNode) ? explorerCurrentNode.children : []
+  const projectRootChildren = isFolderNode(projectTree) ? projectTree.children ?? [] : []
+  const explorerEntries = isFolderNode(explorerCurrentNode) ? explorerCurrentNode.children ?? [] : []
+  const normalizedExplorerSearch = explorerSearch.trim().toLocaleLowerCase('pt-BR')
+  const filteredExplorerEntries = explorerEntries.filter((item) => {
+    if (!normalizedExplorerSearch) {
+      return true
+    }
+
+    const haystack = `${item.name} ${item.description ?? ''} ${getExplorerNodeType(item)} ${item.extension ?? ''}`.toLocaleLowerCase('pt-BR')
+    return haystack.includes(normalizedExplorerSearch)
+  })
+  const sortedExplorerEntries = sortExplorerEntries(filteredExplorerEntries, explorerSortBy)
   const explorerFolderCount = explorerEntries.filter((item) => item.kind === 'folder').length
   const explorerFileCount = explorerEntries.filter((item) => item.kind === 'file').length
   const explorerSelectedNode = findExplorerNode(selectedExplorerPath) ?? explorerCurrentNode
   const isExplorerRoot = explorerCurrentNode.path === projectTree.path
   const explorerBreadcrumbs = getExplorerBreadcrumbs(explorerCurrentNode.path)
+  const explorerCurrentRepoRoot = findExplorerNode(getRepoRootPath(explorerCurrentNode.path))
   const explorerQuickLinks = [
     projectTree,
-    ...(isFolderNode(projectTree)
-      ? projectTree.children.filter((item) => item.kind === 'folder').slice(0, 6)
-      : []),
+    ...projectRootChildren.filter((item) => item.kind === 'folder').slice(0, 6),
   ]
-  const explorerRecentFiles = flattenExplorerFiles(projectTree)
+  const explorerRecentFiles = flattenExplorerFiles(
+    explorerCurrentRepoRoot && explorerCurrentRepoRoot.kind === 'folder'
+      ? explorerCurrentRepoRoot
+      : projectTree,
+  )
     .filter((item) => item.kind === 'file')
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
     .slice(0, 4)
+  const explorerFavorites = [
+    ...projectRootChildren.filter((item) => ['Belin7z', 'PulseView', 'Web-pc'].includes(item.name)),
+    ...explorerRecentFiles.filter((item) => item.name === 'README.md').slice(0, 1),
+  ]
   const explorerLargestEntrySize = Math.max(
     1,
     ...explorerEntries.map((item) => item.size || 1),
   )
+  const explorerContextNode = explorerContextMenu
+    ? findExplorerNode(explorerContextMenu.nodePath)
+    : null
   const visibleWindows = [...windows]
     .filter(
       (windowState) =>
@@ -825,6 +1034,58 @@ function App() {
     if (id === 'explorer') {
       return (
         <div className="explorer-shell">
+          <div className="explorer-topbar">
+            <div className="explorer-tabs">
+              <button
+                type="button"
+                className={`explorer-tab home ${activeExplorerTabId === null ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveExplorerTabId(null)
+                  setExplorerPath(projectTree.path)
+                  setSelectedExplorerPath(projectTree.path)
+                  setExplorerSearch('')
+                  setExplorerTransitionKey((current) => current + 1)
+                }}
+              >
+                Projetos
+              </button>
+
+              {explorerTabs.map((tab) => (
+                <div key={tab.id} className={`explorer-tab-shell ${activeExplorerTabId === tab.id ? 'active' : ''}`}>
+                  <button
+                    type="button"
+                    className="explorer-tab"
+                    onClick={() => {
+                      setActiveExplorerTabId(tab.id)
+                      setExplorerPath(tab.currentPath)
+                      setSelectedExplorerPath(tab.currentPath)
+                    }}
+                  >
+                    {tab.title}
+                  </button>
+                  <button
+                    type="button"
+                    className="explorer-tab-close"
+                    onClick={() => closeExplorerTab(tab.id)}
+                    aria-label={`Fechar aba ${tab.title}`}
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <label className="explorer-searchbar">
+              <span className="search-glyph" />
+              <input
+                type="text"
+                value={explorerSearch}
+                onChange={(event) => setExplorerSearch(event.target.value)}
+                placeholder="Pesquisar nesta pasta"
+              />
+            </label>
+          </div>
+
           <div className="explorer-commandbar">
             <div className="command-group">
               <button
@@ -832,22 +1093,44 @@ function App() {
                 className="toolbar-button icon-only"
                 onClick={goUpExplorerFolder}
                 disabled={explorerCurrentNode.path === projectTree.path}
+                aria-label="Voltar"
               >
-                ↑
+                &larr;
+              </button>
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => {
+                  const targetFolder = explorerSelectedNode.kind === 'folder'
+                    ? explorerSelectedNode.path
+                    : explorerCurrentNode.path
+
+                  openExplorerFolder(targetFolder)
+                }}
+              >
+                Novo
+              </button>
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => setExplorerSortBy((current) => getNextExplorerSortBy(current))}
+              >
+                Ordenar: {getExplorerSortLabel(explorerSortBy)}
+              </button>
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => setExplorerViewMode((current) => getNextExplorerViewMode(current))}
+              >
+                Exibir: {getExplorerViewLabel(explorerViewMode)}
               </button>
               <button
                 type="button"
                 className="toolbar-button icon-only"
                 onClick={() => setSelectedExplorerPath(explorerCurrentNode.path)}
+                aria-label="Mais opções"
               >
-                i
-              </button>
-              <button
-                type="button"
-                className="toolbar-button icon-only"
-                onClick={() => openExplorerFolder(initialExplorerFolder.path)}
-              >
-                ⌂
+                &hellip;
               </button>
             </div>
             <div className="breadcrumb-bar">
@@ -862,7 +1145,7 @@ function App() {
                     }
                   }}
                 >
-                  {index > 0 ? <span className="breadcrumb-divider">/</span> : null}
+                  {index > 0 ? <span className="breadcrumb-divider">&rsaquo;</span> : null}
                   <span>{item.name}</span>
                 </button>
               ))}
@@ -878,13 +1161,13 @@ function App() {
                     key={item.path}
                     type="button"
                     className={`nav-item ${item.path === explorerCurrentNode.path ? 'active' : ''}`}
-                    onClick={() => {
-                      if (item.kind === 'folder') {
-                        openExplorerFolder(item.path)
-                      }
+                    onClick={() => setSelectedExplorerPath(item.path)}
+                    onDoubleClick={() => {
+                      if (item.kind === 'folder') openExplorerFolder(item.path)
                     }}
+                    onContextMenu={(event) => openExplorerContextMenu(event, item)}
                   >
-                    <span className="folder-glyph" />
+                    <FileTypeIcon kind={item.kind} extension={item.extension} className="entry-icon nav" />
                     <span>
                       <strong>{item.name}</strong>
                       <small>{item.kind === 'folder' ? `${item.children?.length ?? 0} itens` : formatExplorerDate(item.updatedAt)}</small>
@@ -894,19 +1177,21 @@ function App() {
               </div>
 
               <div className="explorer-nav-section">
-                <p className="section-title">Atualizados recentemente</p>
+                <p className="section-title">Favoritos</p>
                 <div className="nav-list compact">
-                  {explorerRecentFiles.map((item) => (
+                  {explorerFavorites.map((item) => (
                     <button
                       key={item.path}
                       type="button"
                       className={`nav-item compact ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
                       onClick={() => setSelectedExplorerPath(item.path)}
+                      onDoubleClick={() => openExplorerEntry(item)}
+                      onContextMenu={(event) => openExplorerContextMenu(event, item)}
                     >
-                      <span className="recommended-doc small" />
+                      <FileTypeIcon kind={item.kind} extension={item.extension} className="entry-icon nav compact" />
                       <span>
                         <strong>{item.name}</strong>
-                        <small>{formatExplorerDate(item.updatedAt)}</small>
+                        <small>{item.kind === 'folder' ? 'Acesso fixado' : formatExplorerDate(item.updatedAt)}</small>
                       </span>
                     </button>
                   ))}
@@ -941,84 +1226,100 @@ function App() {
                     </div>
                   </div>
                 </div>
+                {explorerSelectedNode.badges?.length ? (
+                  <div className="explorer-badges">
+                    {explorerSelectedNode.badges.map((badge) => (
+                      <span key={badge} className="explorer-badge">{badge}</span>
+                    ))}
+                  </div>
+                ) : null}
               </section>
 
-              <section className="surface-card explorer-browser">
+              <section key={explorerTransitionKey} className="surface-card explorer-browser explorer-animate">
                 <div className="explorer-files-header">
                   <div>
                     <p className="section-title">{isExplorerRoot ? 'Projetos disponíveis' : 'Conteúdo da pasta'}</p>
-                    <strong>{explorerEntries.length} itens encontrados</strong>
+                    <strong>{sortedExplorerEntries.length} itens encontrados</strong>
                   </div>
                   <span className="muted-text">{explorerCurrentNode.path.replaceAll('/', ' > ')}</span>
                 </div>
 
                 {isExplorerRoot ? (
                   <div className="repo-drive-grid">
-                    {explorerEntries.map((item) => (
+                    {sortedExplorerEntries.map((item) => (
                       <button
                         key={item.path}
                         type="button"
                         className={`repo-drive-card ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
-                        onClick={() => {
-                          if (item.kind === 'folder') {
-                            openExplorerFolder(item.path)
-                            return
-                          }
-
-                          setSelectedExplorerPath(item.path)
-                        }}
+                        onClick={() => setSelectedExplorerPath(item.path)}
+                        onDoubleClick={() => openExplorerEntry(item)}
+                        onContextMenu={(event) => openExplorerContextMenu(event, item)}
                       >
                         <div className="repo-drive-top">
-                          <span className="folder-icon small" />
-                          <strong>{item.name}</strong>
+                          <FileTypeIcon kind={item.kind} extension={item.extension} className="entry-icon repo" />
+                          <div className="repo-drive-title">
+                            <strong>{item.name}</strong>
+                            <small>{item.repoMeta?.visibility ?? 'Projeto'}</small>
+                          </div>
                         </div>
                         <span className="repo-drive-copy">{item.description ?? 'Repositório público no GitHub.'}</span>
                         <div className="repo-drive-bar">
                           <span style={{ width: `${Math.max(18, Math.round((item.size / explorerLargestEntrySize) * 100))}%` }} />
                         </div>
                         <div className="repo-drive-meta">
-                          <span>{formatExplorerSize(item)}</span>
+                          <span>{item.repoMeta?.language ?? 'Sem linguagem'}</span>
                           <span>{formatExplorerDate(item.updatedAt)}</span>
                         </div>
+                        {item.badges?.length ? (
+                          <div className="repo-drive-badges">
+                            {item.badges.map((badge) => (
+                              <span key={badge} className="explorer-badge">{badge}</span>
+                            ))}
+                          </div>
+                        ) : null}
                       </button>
                     ))}
                   </div>
                 ) : (
                   <>
-                    <div className="file-table-head browser">
-                      <span>Nome</span>
-                      <span>Tipo</span>
-                      <span>Atualizado em</span>
-                      <span>Tamanho</span>
-                    </div>
+                    {explorerViewMode === 'details' ? (
+                      <div className="file-table-head browser">
+                        <span>Nome</span>
+                        <span>Tipo</span>
+                        <span>Atualizado em</span>
+                        <span>Tamanho</span>
+                      </div>
+                    ) : null}
 
-                    <div className="file-table browser-file-table">
-                      {explorerEntries.map((item) => (
-                        <button
-                          key={item.path}
-                          type="button"
-                          className={`file-row browser ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
-                          onClick={() => {
-                            if (item.kind === 'folder') {
-                              openExplorerFolder(item.path)
-                              return
-                            }
-
-                            setSelectedExplorerPath(item.path)
-                          }}
-                        >
-                          <div className="file-cell main">
-                            {item.kind === 'folder' ? <span className="folder-icon small" /> : <span className="recommended-doc small" />}
-                            <span className="file-main-copy">
-                              <strong>{item.name}</strong>
-                              <small>{item.path}</small>
-                            </span>
-                          </div>
-                          <span className="file-cell meta" data-label="Tipo">{getExplorerNodeType(item)}</span>
-                          <span className="file-cell meta" data-label="Atualizado em">{formatExplorerDate(item.updatedAt)}</span>
-                          <span className="file-cell meta" data-label="Tamanho">{formatExplorerSize(item)}</span>
-                        </button>
-                      ))}
+                    <div className={`file-table browser-file-table ${explorerViewMode}`}>
+                      {sortedExplorerEntries.length > 0 ? (
+                        sortedExplorerEntries.map((item) => (
+                          <button
+                            key={item.path}
+                            type="button"
+                            className={`file-row browser ${explorerViewMode} ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
+                            onClick={() => setSelectedExplorerPath(item.path)}
+                            onDoubleClick={() => openExplorerEntry(item)}
+                            onContextMenu={(event) => openExplorerContextMenu(event, item)}
+                          >
+                            <div className="file-cell main">
+                              <FileTypeIcon kind={item.kind} extension={item.extension} className="entry-icon file" />
+                              <span className="file-main-copy">
+                                <strong>{item.name}</strong>
+                                <small>{item.path}</small>
+                              </span>
+                            </div>
+                            <span className="file-cell meta" data-label="Tipo">{getExplorerNodeType(item)}</span>
+                            <span className="file-cell meta" data-label="Atualizado em">{formatExplorerDate(item.updatedAt)}</span>
+                            <span className="file-cell meta" data-label="Tamanho">{formatExplorerSize(item)}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="explorer-empty-state">
+                          <strong>Nenhum item encontrado</strong>
+                          <span>Refine a pesquisa ou volte para outra pasta do projeto.</span>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -1035,14 +1336,16 @@ function App() {
                   </div>
 
                   <div className="explorer-favorites single-column">
-                    {explorerEntries.filter((item) => item.kind === 'folder').map((item) => (
+                    {sortedExplorerEntries.filter((item) => item.kind === 'folder').map((item) => (
                       <button
                         key={item.path}
                         type="button"
                         className="favorite-tile"
-                        onClick={() => openExplorerFolder(item.path)}
+                        onClick={() => setSelectedExplorerPath(item.path)}
+                        onDoubleClick={() => openExplorerFolder(item.path)}
+                        onContextMenu={(event) => openExplorerContextMenu(event, item)}
                       >
-                        <span className="folder-icon" />
+                        <FileTypeIcon kind={item.kind} extension={item.extension} className="entry-icon tile" />
                         <strong>{item.name}</strong>
                         <small>{item.children?.length ?? 0} itens</small>
                       </button>
@@ -1066,9 +1369,11 @@ function App() {
                         type="button"
                         className={`file-row compact ${file.path === explorerSelectedNode.path ? 'active' : ''}`}
                         onClick={() => setSelectedExplorerPath(file.path)}
+                        onDoubleClick={() => openExplorerEntry(file)}
+                        onContextMenu={(event) => openExplorerContextMenu(event, file)}
                       >
                         <div className="file-cell main">
-                          <span className="recommended-doc small" />
+                          <FileTypeIcon kind={file.kind} extension={file.extension} className="entry-icon file compact" />
                           <span className="file-main-copy">
                             <strong>{file.name}</strong>
                             <small>{file.path}</small>
@@ -1085,12 +1390,27 @@ function App() {
             <aside className="surface-card explorer-details">
               <p className="section-title">Painel de detalhes</p>
               <div className="details-preview">
-                {explorerSelectedNode.kind === 'folder' ? <span className="folder-icon large" /> : <span className="recommended-doc" />}
+                {explorerSelectedNode.kind === 'folder'
+                  ? <FileTypeIcon kind="folder" className="entry-icon preview folder" />
+                  : <FileTypeIcon kind="file" extension={explorerSelectedNode.extension} className="entry-icon preview file" />}
               </div>
               <div className="details-copy">
                 <strong>{explorerSelectedNode.name}</strong>
                 <span>{getExplorerNodeType(explorerSelectedNode)}</span>
               </div>
+              {explorerSelectedNode.badges?.length ? (
+                <div className="explorer-badges details">
+                  {explorerSelectedNode.badges.map((badge) => (
+                    <span key={badge} className="explorer-badge">{badge}</span>
+                  ))}
+                </div>
+              ) : null}
+              {explorerSelectedNode.previewText && isPreviewableFile(explorerSelectedNode) ? (
+                <div className="preview-panel">
+                  <p className="section-title">Preview</p>
+                  <pre>{explorerSelectedNode.previewText}</pre>
+                </div>
+              ) : null}
               <dl className="details-meta">
                 <div>
                   <dt>Local</dt>
@@ -1115,6 +1435,22 @@ function App() {
                   <dt>Tamanho</dt>
                   <dd>{formatExplorerSize(explorerSelectedNode)}</dd>
                 </div>
+                {explorerSelectedNode.repoMeta ? (
+                  <>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{explorerSelectedNode.repoMeta.visibility}</dd>
+                    </div>
+                    <div>
+                      <dt>Branch</dt>
+                      <dd>{explorerSelectedNode.repoMeta.defaultBranch}</dd>
+                    </div>
+                    <div>
+                      <dt>Último push</dt>
+                      <dd>{formatExplorerDate(explorerSelectedNode.repoMeta.pushedAt)}</dd>
+                    </div>
+                  </>
+                ) : null}
               </dl>
               <div className="details-actions">
                 {explorerSelectedNode.kind === 'folder' ? (
@@ -1138,6 +1474,28 @@ function App() {
                 ) : null}
               </div>
             </aside>
+
+            {explorerContextMenu && explorerContextNode ? (
+              <div
+                className="explorer-context-menu"
+                style={{
+                  left: explorerContextMenu.x,
+                  top: explorerContextMenu.y,
+                }}
+              >
+                <button type="button" onClick={() => openExplorerEntry(explorerContextNode)}>
+                  Abrir
+                </button>
+                <button type="button" onClick={() => copyExplorerPath(explorerContextNode.path)}>
+                  Copiar caminho
+                </button>
+                {explorerContextNode.htmlUrl ? (
+                  <a href={explorerContextNode.htmlUrl} target="_blank" rel="noreferrer">
+                    Abrir no GitHub
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       )

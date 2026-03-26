@@ -12,6 +12,12 @@ const ignoredLocalNames = new Set([
   'node_modules',
 ])
 
+const previewTargets = new Set([
+  'README.md',
+  'package.json',
+  'App.tsx',
+])
+
 function toPosixPath(value) {
   return value.split(path.sep).join('/')
 }
@@ -23,6 +29,8 @@ function createFolderNode({
   description = '',
   size = 0,
   htmlUrl = '',
+  badges = [],
+  repoMeta,
 }) {
   return {
     name,
@@ -32,6 +40,8 @@ function createFolderNode({
     size,
     description,
     htmlUrl,
+    badges,
+    repoMeta,
     children: [],
   }
 }
@@ -43,6 +53,8 @@ function createFileNode({
   size,
   extension,
   htmlUrl,
+  rawUrl = '',
+  previewText,
 }) {
   return {
     name,
@@ -52,6 +64,8 @@ function createFileNode({
     size,
     extension,
     htmlUrl,
+    rawUrl,
+    previewText,
   }
 }
 
@@ -86,6 +100,64 @@ async function fetchJson(url) {
   }
 
   return response.json()
+}
+
+async function fetchPreviewText(rawUrl) {
+  try {
+    const response = await fetch(rawUrl, {
+      headers: {
+        'User-Agent': 'web-pc-builder',
+      },
+    })
+
+    if (!response.ok) {
+      return undefined
+    }
+
+    const text = await response.text()
+    return text.slice(0, 1200)
+  } catch {
+    return undefined
+  }
+}
+
+function collectRepoBadges(repo, treeEntries) {
+  const entryPaths = new Set(treeEntries.map((entry) => entry.path))
+  const badges = new Set()
+
+  if (repo.language) {
+    badges.add(repo.language)
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('README.md'))) {
+    badges.add('README')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.startsWith('.github/workflows/'))) {
+    badges.add('Workflow')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('.ts') || entryPath.endsWith('.tsx'))) {
+    badges.add('TypeScript')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('.js'))) {
+    badges.add('JavaScript')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('.css'))) {
+    badges.add('CSS')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('.html'))) {
+    badges.add('HTML')
+  }
+
+  if ([...entryPaths].some((entryPath) => entryPath.endsWith('.json'))) {
+    badges.add('JSON')
+  }
+
+  return [...badges].slice(0, 5)
 }
 
 function ensureFolder(parentNode, folderName, currentPath, updatedAt, htmlUrl, description) {
@@ -124,6 +196,10 @@ async function buildGitHubRepoTree() {
 
   const repoTrees = await Promise.all(
     repos.map(async (repo) => {
+      const treeResponse = await fetchJson(
+        `${githubApiBase}/repos/${githubOwner}/${repo.name}/git/trees/${repo.default_branch}?recursive=1`,
+      )
+
       const repoNode = createFolderNode({
         name: repo.name,
         currentPath: `Projetos/${repo.name}`,
@@ -131,11 +207,14 @@ async function buildGitHubRepoTree() {
         description: repo.description ?? `Repositório público de ${githubOwner}.`,
         size: Number(repo.size ?? 0) * 1024,
         htmlUrl: repo.html_url,
+        badges: collectRepoBadges(repo, treeResponse.tree ?? []),
+        repoMeta: {
+          defaultBranch: repo.default_branch,
+          visibility: repo.private ? 'Privado' : 'Público',
+          language: repo.language ?? 'Sem linguagem principal',
+          pushedAt: repo.pushed_at,
+        },
       })
-
-      const treeResponse = await fetchJson(
-        `${githubApiBase}/repos/${githubOwner}/${repo.name}/git/trees/${repo.default_branch}?recursive=1`,
-      )
 
       for (const entry of treeResponse.tree ?? []) {
         if (typeof entry.path !== 'string') {
@@ -144,7 +223,7 @@ async function buildGitHubRepoTree() {
 
         const entryParts = entry.path.split('/')
         let currentFolder = repoNode
-        let currentSegments = []
+        const currentSegments = []
 
         for (let index = 0; index < entryParts.length - 1; index += 1) {
           currentSegments.push(entryParts[index])
@@ -184,6 +263,10 @@ async function buildGitHubRepoTree() {
         const filePath = `Projetos/${repo.name}/${entry.path}`
         const extension = path.extname(entry.path).slice(1)
         const fileHtmlUrl = `${repo.html_url}/blob/${repo.default_branch}/${entry.path}`
+        const rawUrl = `https://raw.githubusercontent.com/${githubOwner}/${repo.name}/${repo.default_branch}/${entry.path}`
+        const previewText = previewTargets.has(entryParts.at(-1))
+          ? await fetchPreviewText(rawUrl)
+          : undefined
 
         currentFolder.children.push(
           createFileNode({
@@ -193,6 +276,8 @@ async function buildGitHubRepoTree() {
             size: Number(entry.size ?? 0),
             extension,
             htmlUrl: fileHtmlUrl,
+            rawUrl,
+            previewText,
           }),
         )
       }
@@ -252,13 +337,14 @@ async function buildLocalNode(absolutePath, rootLabel, relativePath = '') {
     )
 
     return {
-      name: relativeFsPath ? path.basename(absolutePath) : rootLabel,
+      name: relativeFsPath ? path.basename(absolutePath) : path.basename(rootLabel),
       kind: 'folder',
       path: currentPath,
       updatedAt: fileStats.mtime.toISOString(),
       size: 0,
-      description: `Pasta local do projeto ${rootLabel}.`,
-      htmlUrl: `https://github.com/${githubOwner}/${rootLabel}`,
+      description: `Pasta local do projeto ${path.basename(rootLabel)}.`,
+      htmlUrl: `https://github.com/${githubOwner}/${path.basename(rootLabel)}`,
+      badges: [],
       children: children.sort((left, right) => {
         if (left.kind !== right.kind) {
           return left.kind === 'folder' ? -1 : 1
@@ -269,14 +355,22 @@ async function buildLocalNode(absolutePath, rootLabel, relativePath = '') {
     }
   }
 
+  const fileName = path.basename(absolutePath)
+  const extension = path.extname(absolutePath).slice(1)
+  const previewText = previewTargets.has(fileName)
+    ? (await readFile(absolutePath, 'utf8')).slice(0, 1200)
+    : undefined
+
   return {
-    name: path.basename(absolutePath),
+    name: fileName,
     kind: 'file',
     path: currentPath,
     updatedAt: fileStats.mtime.toISOString(),
     size: fileStats.size,
-    extension: path.extname(absolutePath).slice(1),
-    htmlUrl: `https://github.com/${githubOwner}/${rootLabel}`,
+    extension,
+    htmlUrl: `https://github.com/${githubOwner}/${path.basename(rootLabel)}`,
+    rawUrl: '',
+    previewText,
   }
 }
 
@@ -297,6 +391,12 @@ async function buildLocalFallbackTree() {
         ...projectNode,
         name: projectName,
         path: `Projetos/${projectName}`,
+        repoMeta: {
+          defaultBranch: 'main',
+          visibility: 'Local',
+          language: 'Sem linguagem principal',
+          pushedAt: projectNode.updatedAt,
+        },
       },
     ],
   }
@@ -320,6 +420,15 @@ async function main() {
   size: number
   description?: string
   htmlUrl?: string
+  rawUrl?: string
+  previewText?: string
+  badges?: string[]
+  repoMeta?: {
+    defaultBranch: string
+    visibility: string
+    language: string
+    pushedAt: string
+  }
   extension?: string
   children?: ProjectTreeNode[]
 }
