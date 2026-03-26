@@ -1,4 +1,4 @@
-type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings'
+type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings' | 'notepad' | 'photos'
 
 interface IconProps {
   appId: AppId
@@ -72,6 +72,33 @@ export function AppIcon({ appId, className }: IconProps) {
           </defs>
           <path d="M19.6 16.6c-.8 2.8-3.3 4.7-6.7 4.7-4.7 0-8.4-3.1-8.4-7.4 0-3.6 2.8-7.4 8-7.4 3.1 0 5.7 1.3 7.1 3.6-1-.5-2.1-.8-3.4-.8-4 0-6.8 2.4-6.8 5.4 0 1.9 1.3 3.2 3.2 3.2 1.8 0 2.9-.8 3.8-2.2.6-1 1.7-1.6 3.2-1.6Z" fill="url(#edge-a)" />
           <path d="M20 14.6c0 4.1-3 6.7-7.1 6.7-3.6 0-6.4-2.4-6.4-5.6 0-.2 0-.4.1-.6.8 2 2.9 3.3 5.6 3.3 3.2 0 5.5-1.5 7.8-3.8Z" fill="#0aa3b5" />
+        </svg>
+      </span>
+    )
+  }
+
+  if (appId === 'notepad') {
+    return (
+      <span className={className ? `${className} ${appId}` : appId} aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <rect x="5" y="3.5" width="14" height="17" rx="2.8" fill="#ffffff" />
+          <rect x="7.2" y="7.2" width="9.8" height="1.4" rx=".7" fill="#4a76b8" />
+          <rect x="7.2" y="10.5" width="9.8" height="1.4" rx=".7" fill="#6e93ca" />
+          <rect x="7.2" y="13.8" width="7.2" height="1.4" rx=".7" fill="#9bb6de" />
+          <rect x="5" y="3.5" width="14" height="3.4" rx="2.4" fill="#68a7ff" />
+        </svg>
+      </span>
+    )
+  }
+
+  if (appId === 'photos') {
+    return (
+      <span className={className ? `${className} ${appId}` : appId} aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <rect x="3.5" y="4" width="17" height="16" rx="4" fill="#e7f1ff" />
+          <circle cx="9" cy="9" r="2" fill="#f8b84e" />
+          <path d="M6.5 16.5 10.2 12.3a1 1 0 0 1 1.5.1l1.9 2.2 1.7-1.6a1 1 0 0 1 1.5.1l1.7 2.3v1.1h-12Z" fill="#45c28a" />
+          <path d="M6.5 16.5h12v1.2a2.3 2.3 0 0 1-2.3 2.3H8.8a2.3 2.3 0 0 1-2.3-2.3v-1.2Z" fill="#3b8cff" />
         </svg>
       </span>
     )

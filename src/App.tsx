@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type CSSProperties } from 'react'
 import { AppIcon, FileTypeIcon, WindowsLogo } from './components/SystemIcons'
 import { projectTree, type ProjectTreeNode } from './generated/projectTree'
 import './App.css'
 
-type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings'
+type AppId = 'home' | 'explorer' | 'terminal' | 'edge' | 'settings' | 'notepad' | 'photos'
 type WallpaperId = 'bloom' | 'flow' | 'night'
-type ScreenState = 'boot' | 'lock' | 'desktop'
+type ScreenState = 'boot' | 'welcome' | 'lock' | 'desktop'
+type UserId = 'belin' | 'work' | 'guest'
 
 interface AppDefinition {
   id: AppId
@@ -52,6 +53,41 @@ interface ExplorerContextMenuState {
   nodePath: string
 }
 
+interface SystemUser {
+  id: UserId
+  name: string
+  subtitle: string
+  avatar: string
+  pin: string
+}
+
+interface QuickSettingsState {
+  wifi: boolean
+  bluetooth: boolean
+  airplaneMode: boolean
+  volume: number
+  brightness: number
+}
+
+interface SystemPreferences {
+  transparency: number
+  desktopScale: number
+  animations: boolean
+  autoWallpaper: boolean
+}
+
+interface EdgeTab {
+  id: string
+  title: string
+  url: string
+  description: string
+}
+
+interface TerminalEntry {
+  type: 'command' | 'output'
+  text: string
+}
+
 const apps: AppDefinition[] = [
   {
     id: 'home',
@@ -88,6 +124,20 @@ const apps: AppDefinition[] = [
     iconClass: 'icon-settings',
     window: { width: 760, height: 520 },
   },
+  {
+    id: 'notepad',
+    name: 'Bloco de Notas',
+    summary: 'Notas rápidas com salvamento local.',
+    iconClass: 'icon-notepad',
+    window: { width: 720, height: 520 },
+  },
+  {
+    id: 'photos',
+    name: 'Fotos',
+    summary: 'Visualiza imagens encontradas nos projetos.',
+    iconClass: 'icon-photos',
+    window: { width: 860, height: 560 },
+  },
 ]
 
 const appLookup = Object.fromEntries(
@@ -120,14 +170,6 @@ const startRecommendations = [
   { title: 'README.md', meta: 'Atualizado há pouco' },
   { title: 'deploy.yml', meta: 'Workflow de publicação' },
   { title: 'vite.config.ts', meta: 'Base /Web-pc/' },
-]
-
-const terminalCommands = [
-  'npm install',
-  'npm run build',
-  'git add .',
-  'git commit -m "feat: refina visual para windows 11"',
-  'git push origin main',
 ]
 
 const webLinks = [
@@ -169,8 +211,76 @@ const browserHighlights = [
   },
 ] as const
 
-const desktopShortcuts: AppId[] = ['explorer', 'edge', 'terminal', 'settings']
-const taskbarApps: AppId[] = ['edge', 'explorer', 'terminal', 'settings']
+const systemUsers: SystemUser[] = [
+  { id: 'belin', name: 'Belin7z', subtitle: 'Perfil principal', avatar: 'B', pin: '0000' },
+  { id: 'work', name: 'Belin Work', subtitle: 'Sessão criativa', avatar: 'W', pin: '1111' },
+  { id: 'guest', name: 'Visitante', subtitle: 'Acesso temporário', avatar: 'G', pin: '2222' },
+]
+
+const defaultQuickSettings: QuickSettingsState = {
+  wifi: true,
+  bluetooth: false,
+  airplaneMode: false,
+  volume: 72,
+  brightness: 78,
+}
+
+const defaultPreferences: SystemPreferences = {
+  transparency: 74,
+  desktopScale: 100,
+  animations: true,
+  autoWallpaper: false,
+}
+
+const defaultEdgeTabs: EdgeTab[] = [
+  {
+    id: 'webpc',
+    title: 'Web PC',
+    url: 'https://belin7z.github.io/Web-pc/',
+    description: 'Versão publicada do desktop virtual.',
+  },
+  {
+    id: 'github',
+    title: 'GitHub',
+    url: 'https://github.com/Belin7z/Web-pc',
+    description: 'Repositório principal do projeto.',
+  },
+  {
+    id: 'pages',
+    title: 'GitHub Pages',
+    url: 'https://pages.github.com/',
+    description: 'Guia de publicação estática.',
+  },
+]
+
+const defaultTerminalEntries: TerminalEntry[] = [
+  { type: 'output', text: 'Microsoft Windows [versão Web PC 11.0.0]' },
+  { type: 'output', text: 'Digite `help` para ver os comandos simulados.' },
+]
+
+const notificationItems = [
+  {
+    id: 'deploy',
+    title: 'GitHub Actions',
+    body: 'O workflow de deploy está pronto para publicar no GitHub Pages.',
+    time: 'Agora',
+  },
+  {
+    id: 'explorer',
+    title: 'Explorador',
+    body: 'Seus repositórios foram sincronizados para a experiência do desktop.',
+    time: 'Hoje',
+  },
+  {
+    id: 'system',
+    title: 'Sistema',
+    body: 'Use Alt + Tab para alternar janelas e Win + E para abrir o Explorador.',
+    time: 'Dica',
+  },
+] as const
+
+const desktopShortcuts: AppId[] = ['explorer', 'edge', 'notepad', 'photos', 'terminal', 'settings']
+const taskbarApps: AppId[] = ['edge', 'explorer', 'notepad', 'photos', 'terminal', 'settings']
 const startMenuApps = apps.filter((app) => app.id !== 'home')
 
 const windowSeeds = [
@@ -184,6 +294,14 @@ const windowSeeds = [
 const storageKeys = {
   wallpaper: 'webpc.wallpaper',
   windows: 'webpc.windows',
+  activeUser: 'webpc.activeUser',
+  quickSettings: 'webpc.quickSettings',
+  preferences: 'webpc.preferences',
+  explorerState: 'webpc.explorerState',
+  explorerPins: 'webpc.explorerPins',
+  notepadContent: 'webpc.notepadContent',
+  edgeState: 'webpc.edgeState',
+  terminalState: 'webpc.terminalState',
 }
 
 const appStartedAt = Date.now()
@@ -218,6 +336,101 @@ function isWallpaperId(value: string): value is WallpaperId {
 
 function isAppId(value: string): value is AppId {
   return apps.some((app) => app.id === value)
+}
+
+function isUserId(value: string): value is UserId {
+  return systemUsers.some((user) => user.id === value)
+}
+
+function loadJson<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') {
+    return fallback
+  }
+
+  const savedValue = window.localStorage.getItem(key)
+
+  if (!savedValue) {
+    return fallback
+  }
+
+  try {
+    return { ...fallback, ...JSON.parse(savedValue) }
+  } catch {
+    return fallback
+  }
+}
+
+function loadArray<T>(key: string, fallback: T[]): T[] {
+  if (typeof window === 'undefined') {
+    return fallback
+  }
+
+  const savedValue = window.localStorage.getItem(key)
+
+  if (!savedValue) {
+    return fallback
+  }
+
+  try {
+    const parsed = JSON.parse(savedValue)
+    return Array.isArray(parsed) ? parsed : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function loadActiveUser(): UserId {
+  if (typeof window === 'undefined') {
+    return 'belin'
+  }
+
+  const savedValue = window.localStorage.getItem(storageKeys.activeUser)
+  return savedValue && isUserId(savedValue) ? savedValue : 'belin'
+}
+
+function loadQuickSettings() {
+  return loadJson(storageKeys.quickSettings, defaultQuickSettings)
+}
+
+function loadPreferences() {
+  return loadJson(storageKeys.preferences, defaultPreferences)
+}
+
+function loadExplorerPins() {
+  return loadArray<string>(storageKeys.explorerPins, ['Projetos/Belin7z', 'Projetos/PulseView', 'Projetos/Web-pc'])
+}
+
+function loadNotepadContent() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return window.localStorage.getItem(storageKeys.notepadContent) ?? '# Web PC Notes\n\n- Revisar Explorer\n- Publicar no GitHub Pages\n- Refinar visual do Windows 11'
+}
+
+function loadEdgeState() {
+  return loadJson(storageKeys.edgeState, {
+    tabs: defaultEdgeTabs,
+    activeTabId: defaultEdgeTabs[0].id,
+    history: defaultEdgeTabs.map((tab) => tab.url),
+    favorites: defaultEdgeTabs.slice(0, 2).map((tab) => tab.url),
+  })
+}
+
+function loadTerminalState() {
+  return loadArray<TerminalEntry>(storageKeys.terminalState, defaultTerminalEntries)
+}
+
+function loadExplorerState() {
+  return loadJson(storageKeys.explorerState, {
+    path: projectTree.path,
+    selectedPath: projectTree.path,
+    search: '',
+    sortBy: 'name' as ExplorerSortBy,
+    viewMode: 'details' as ExplorerViewMode,
+    tabs: [] as ExplorerTab[],
+    activeTabId: null as string | null,
+  })
 }
 
 function loadWallpaper(): WallpaperId {
@@ -404,6 +617,10 @@ function isPreviewableFile(node: ProjectTreeNode) {
   return ['md', 'json', 'ts', 'tsx', 'js', 'css', 'html', 'yml'].includes(node.extension ?? '')
 }
 
+function isImageFile(node: ProjectTreeNode) {
+  return node.kind === 'file' && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(node.extension ?? '')
+}
+
 function sortExplorerEntries(entries: ProjectTreeNode[], sortBy: ExplorerSortBy) {
   return [...entries].sort((left, right) => {
     if (left.kind !== right.kind) {
@@ -454,30 +671,49 @@ function getExplorerViewLabel(viewMode: ExplorerViewMode) {
 
 function App() {
   const initialExplorerFolder = projectTree
+  const initialExplorerState = loadExplorerState()
+  const initialEdgeState = loadEdgeState()
   const desktopRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
   const animationTimers = useRef<Partial<Record<AppId, number>>>({})
+  const appSwitcherTimer = useRef<number | null>(null)
   const nextZIndex = useRef(
     loadWindows().reduce((highestZ, windowState) => Math.max(highestZ, windowState.z), 20),
   )
 
   const [screen, setScreen] = useState<ScreenState>('boot')
+  const [selectedUserId, setSelectedUserId] = useState<UserId>(() => loadActiveUser())
   const [wallpaper, setWallpaper] = useState<WallpaperId>(() => loadWallpaper())
+  const [preferences, setPreferences] = useState<SystemPreferences>(() => loadPreferences())
+  const [quickSettings, setQuickSettings] = useState<QuickSettingsState>(() => loadQuickSettings())
   const [now, setNow] = useState(() => new Date())
   const [startOpen, setStartOpen] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false)
+  const [appSwitcherVisible, setAppSwitcherVisible] = useState(false)
+  const [appSwitcherLabel, setAppSwitcherLabel] = useState('')
   const [startQuery, setStartQuery] = useState('')
   const [showAllApps, setShowAllApps] = useState(false)
-  const [explorerTabs, setExplorerTabs] = useState<ExplorerTab[]>([])
-  const [activeExplorerTabId, setActiveExplorerTabId] = useState<string | null>(null)
-  const [explorerPath, setExplorerPath] = useState(initialExplorerFolder.path)
-  const [selectedExplorerPath, setSelectedExplorerPath] = useState(initialExplorerFolder.path)
-  const [explorerSearch, setExplorerSearch] = useState('')
-  const [explorerSortBy, setExplorerSortBy] = useState<ExplorerSortBy>('name')
-  const [explorerViewMode, setExplorerViewMode] = useState<ExplorerViewMode>('details')
+  const [explorerTabs, setExplorerTabs] = useState<ExplorerTab[]>(() => initialExplorerState.tabs)
+  const [activeExplorerTabId, setActiveExplorerTabId] = useState<string | null>(() => initialExplorerState.activeTabId)
+  const [explorerPath, setExplorerPath] = useState(() => initialExplorerState.path)
+  const [selectedExplorerPath, setSelectedExplorerPath] = useState(() => initialExplorerState.selectedPath)
+  const [explorerSearch, setExplorerSearch] = useState(() => initialExplorerState.search)
+  const [explorerAddressInput, setExplorerAddressInput] = useState(() => initialExplorerState.path)
+  const [explorerSortBy, setExplorerSortBy] = useState<ExplorerSortBy>(() => initialExplorerState.sortBy)
+  const [explorerViewMode, setExplorerViewMode] = useState<ExplorerViewMode>(() => initialExplorerState.viewMode)
   const [explorerTransitionKey, setExplorerTransitionKey] = useState(0)
   const [explorerContextMenu, setExplorerContextMenu] = useState<ExplorerContextMenuState | null>(null)
+  const [pinnedExplorerPaths, setPinnedExplorerPaths] = useState<string[]>(() => loadExplorerPins())
   const [windows, setWindows] = useState<WindowState[]>(() => loadWindows())
   const [animationStates, setAnimationStates] = useState<Partial<Record<AppId, WindowAnimation>>>({})
+  const [notepadContent, setNotepadContent] = useState(() => loadNotepadContent())
+  const [edgeTabs, setEdgeTabs] = useState<EdgeTab[]>(() => initialEdgeState.tabs)
+  const [activeEdgeTabId, setActiveEdgeTabId] = useState<string>(() => initialEdgeState.activeTabId)
+  const [edgeHistory, setEdgeHistory] = useState<string[]>(() => initialEdgeState.history)
+  const [edgeFavorites, setEdgeFavorites] = useState<string[]>(() => initialEdgeState.favorites)
+  const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>(() => loadTerminalState())
+  const [terminalInput, setTerminalInput] = useState('')
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
@@ -485,11 +721,13 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const bootTimer = window.setTimeout(() => {
-      setScreen('lock')
-    }, 1800)
+    const firstTimer = window.setTimeout(() => setScreen('welcome'), 1500)
+    const secondTimer = window.setTimeout(() => setScreen('lock'), 2600)
 
-    return () => window.clearTimeout(bootTimer)
+    return () => {
+      window.clearTimeout(firstTimer)
+      window.clearTimeout(secondTimer)
+    }
   }, [])
 
   useEffect(() => {
@@ -517,6 +755,59 @@ function App() {
   }, [windows])
 
   useEffect(() => {
+    window.localStorage.setItem(storageKeys.activeUser, selectedUserId)
+  }, [selectedUserId])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.quickSettings, JSON.stringify(quickSettings))
+  }, [quickSettings])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.preferences, JSON.stringify(preferences))
+  }, [preferences])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.explorerPins, JSON.stringify(pinnedExplorerPaths))
+  }, [pinnedExplorerPaths])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.notepadContent, notepadContent)
+  }, [notepadContent])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.edgeState, JSON.stringify({
+      tabs: edgeTabs,
+      activeTabId: activeEdgeTabId,
+      history: edgeHistory,
+      favorites: edgeFavorites,
+    }))
+  }, [activeEdgeTabId, edgeFavorites, edgeHistory, edgeTabs])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.terminalState, JSON.stringify(terminalEntries))
+  }, [terminalEntries])
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKeys.explorerState, JSON.stringify({
+      path: explorerPath,
+      selectedPath: selectedExplorerPath,
+      search: explorerSearch,
+      sortBy: explorerSortBy,
+      viewMode: explorerViewMode,
+      tabs: explorerTabs,
+      activeTabId: activeExplorerTabId,
+    }))
+  }, [
+    activeExplorerTabId,
+    explorerPath,
+    explorerSearch,
+    selectedExplorerPath,
+    explorerSortBy,
+    explorerTabs,
+    explorerViewMode,
+  ])
+
+  useEffect(() => {
     const closeContextMenu = () => setExplorerContextMenu(null)
 
     window.addEventListener('click', closeContextMenu)
@@ -527,6 +818,26 @@ function App() {
       window.removeEventListener('contextmenu', closeContextMenu)
     }
   }, [])
+
+  useEffect(() => {
+    setExplorerAddressInput(explorerPath)
+  }, [explorerPath])
+
+  useEffect(() => {
+    if (!preferences.autoWallpaper || screen !== 'desktop') {
+      return undefined
+    }
+
+    const cycle = window.setInterval(() => {
+      setWallpaper((current) => {
+        const currentIndex = wallpapers.findIndex((item) => item.id === current)
+        const nextItem = wallpapers[(currentIndex + 1) % wallpapers.length]
+        return nextItem.id
+      })
+    }, 18000)
+
+    return () => window.clearInterval(cycle)
+  }, [preferences.autoWallpaper, screen])
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -580,10 +891,52 @@ function App() {
           window.clearTimeout(timer)
         }
       })
+
+      if (appSwitcherTimer.current) {
+        window.clearTimeout(appSwitcherTimer.current)
+      }
     }
   }, [])
 
+  const playSystemSound = (kind: 'open' | 'minimize' | 'login' | 'error') => {
+    try {
+      const AudioContextCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+
+      if (!AudioContextCtor) {
+        return
+      }
+
+      const context = new AudioContextCtor()
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      const presets = {
+        open: { frequency: 640, duration: 0.08, end: 820 },
+        minimize: { frequency: 420, duration: 0.08, end: 260 },
+        login: { frequency: 520, duration: 0.16, end: 760 },
+        error: { frequency: 220, duration: 0.18, end: 170 },
+      } as const
+
+      const preset = presets[kind]
+      oscillator.type = kind === 'error' ? 'sawtooth' : 'sine'
+      oscillator.frequency.setValueAtTime(preset.frequency, context.currentTime)
+      oscillator.frequency.exponentialRampToValueAtTime(preset.end, context.currentTime + preset.duration)
+
+      gain.gain.setValueAtTime(0.0001, context.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.05, context.currentTime + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + preset.duration)
+
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      oscillator.start()
+      oscillator.stop(context.currentTime + preset.duration)
+      window.setTimeout(() => void context.close(), Math.ceil(preset.duration * 1000) + 40)
+    } catch {
+      // Ignore audio failures in restricted environments.
+    }
+  }
+
   const unlockDesktop = () => {
+    playSystemSound('login')
     setScreen('desktop')
   }
 
@@ -593,12 +946,18 @@ function App() {
     setShowAllApps(false)
   }
 
+  const closeSystemPanels = () => {
+    setCalendarOpen(false)
+    setQuickSettingsOpen(false)
+  }
+
   const toggleStartMenu = () => {
     if (startOpen) {
       closeStartMenu()
       return
     }
 
+    closeSystemPanels()
     setStartQuery('')
     setShowAllApps(false)
     setStartOpen(true)
@@ -606,6 +965,7 @@ function App() {
 
   const lockDesktop = () => {
     closeStartMenu()
+    closeSystemPanels()
     setScreen('lock')
   }
 
@@ -637,6 +997,7 @@ function App() {
       ),
     )
 
+    playSystemSound('open')
     setWindowAnimation(id, 'opening')
   }
 
@@ -652,11 +1013,13 @@ function App() {
 
   const openWindow = (id: AppId) => {
     closeStartMenu()
+    closeSystemPanels()
     setWindows((current) => {
       const existingWindow = current.find((windowState) => windowState.id === id)
       const z = ++nextZIndex.current
 
       if (existingWindow) {
+        playSystemSound('open')
         setWindowAnimation(id, 'opening')
         return current.map((windowState) =>
           windowState.id === id ? { ...windowState, minimized: false, z } : windowState,
@@ -664,6 +1027,7 @@ function App() {
       }
 
       const nextWindow = createWindow(id, current.length, z)
+      playSystemSound('open')
       window.setTimeout(() => setWindowAnimation(id, 'opening'), 0)
       return [...current, nextWindow]
     })
@@ -674,6 +1038,7 @@ function App() {
   }
 
   const minimizeWindow = (id: AppId) => {
+    playSystemSound('minimize')
     setWindowAnimation(id, 'minimizing')
     window.setTimeout(() => {
       setWindows((current) =>
@@ -689,6 +1054,7 @@ function App() {
     const z = ++nextZIndex.current
 
     if (targetWindow) {
+      playSystemSound('open')
       setWindowAnimation(id, targetWindow.maximized ? 'restoring' : 'maximizing')
     }
 
@@ -820,6 +1186,200 @@ function App() {
     setExplorerContextMenu(null)
   }
 
+  const submitExplorerAddress = () => {
+    const targetPath = explorerAddressInput.trim().replaceAll('\\', '/')
+
+    if (!targetPath) {
+      return
+    }
+
+    const targetNode = findExplorerNode(targetPath)
+
+    if (!targetNode) {
+      playSystemSound('error')
+      return
+    }
+
+    if (targetNode.kind === 'folder') {
+      openExplorerFolder(targetPath)
+      return
+    }
+
+    setSelectedExplorerPath(targetPath)
+  }
+
+  const togglePinnedExplorerPath = (pathValue: string) => {
+    setPinnedExplorerPaths((current) => (
+      current.includes(pathValue)
+        ? current.filter((item) => item !== pathValue)
+        : [...current, pathValue]
+    ))
+    setExplorerContextMenu(null)
+  }
+
+  const runTerminalCommand = (rawCommand: string) => {
+    const command = rawCommand.trim()
+
+    if (!command) {
+      return
+    }
+
+    const normalized = command.toLowerCase()
+    const nextEntries: TerminalEntry[] = [{ type: 'command', text: command }]
+
+    if (normalized === 'help') {
+      nextEntries.push({
+        type: 'output',
+        text: 'Comandos: help, explorer, edge, notes, photos, settings, time, clear.',
+      })
+    } else if (normalized === 'explorer') {
+      openWindow('explorer')
+      nextEntries.push({ type: 'output', text: 'Explorador aberto.' })
+    } else if (normalized === 'edge') {
+      openWindow('edge')
+      nextEntries.push({ type: 'output', text: 'Microsoft Edge aberto.' })
+    } else if (normalized === 'notes') {
+      openWindow('notepad')
+      nextEntries.push({ type: 'output', text: 'Bloco de Notas aberto.' })
+    } else if (normalized === 'photos') {
+      openWindow('photos')
+      nextEntries.push({ type: 'output', text: 'Fotos aberto.' })
+    } else if (normalized === 'settings') {
+      openWindow('settings')
+      nextEntries.push({ type: 'output', text: 'Configurações abertas.' })
+    } else if (normalized === 'time') {
+      nextEntries.push({ type: 'output', text: `Hora atual: ${timeLabel} em ${dateLabel}.` })
+    } else if (normalized === 'clear') {
+      setTerminalEntries(defaultTerminalEntries)
+      setTerminalInput('')
+      return
+    } else {
+      playSystemSound('error')
+      nextEntries.push({ type: 'output', text: `'${command}' não é reconhecido neste terminal simulado.` })
+    }
+
+    setTerminalEntries((current) => [...current, ...nextEntries])
+    setTerminalInput('')
+  }
+
+  const addEdgeTab = (tab: EdgeTab) => {
+    setEdgeTabs((current) => {
+      if (current.some((item) => item.url === tab.url)) {
+        return current
+      }
+
+      return [...current, tab]
+    })
+    setActiveEdgeTabId(tab.id)
+    setEdgeHistory((current) => [tab.url, ...current.filter((item) => item !== tab.url)].slice(0, 12))
+  }
+
+  const closeEdgeTab = (tabId: string) => {
+    setEdgeTabs((current) => {
+      if (current.length === 1) {
+        return current
+      }
+
+      const nextTabs = current.filter((tab) => tab.id !== tabId)
+
+      if (activeEdgeTabId === tabId) {
+        setActiveEdgeTabId(nextTabs[nextTabs.length - 1].id)
+      }
+
+      return nextTabs
+    })
+  }
+
+  const activeWindow = [...windows]
+    .filter((windowState) => !windowState.minimized)
+    .sort((left, right) => right.z - left.z)[0]
+
+  const handleGlobalKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (screen !== 'desktop') {
+      return
+    }
+
+    if (event.key === 'Escape') {
+      closeStartMenu()
+      closeSystemPanels()
+      return
+    }
+
+    if (event.key === 'Meta') {
+      event.preventDefault()
+      toggleStartMenu()
+      return
+    }
+
+    if (event.metaKey && event.key.toLowerCase() === 'e') {
+      event.preventDefault()
+      openWindow('explorer')
+      return
+    }
+
+    if (event.metaKey && event.key.toLowerCase() === 'n') {
+      event.preventDefault()
+      openWindow('notepad')
+      return
+    }
+
+    if (event.metaKey && event.key.toLowerCase() === 'a') {
+      event.preventDefault()
+      setQuickSettingsOpen((current) => !current)
+      setCalendarOpen(false)
+      closeStartMenu()
+      return
+    }
+
+    if (event.altKey && event.key.toLowerCase() === 'tab') {
+      event.preventDefault()
+
+      if (windows.length === 0) {
+        return
+      }
+
+      const ordered = [...windows]
+        .filter((windowState) => !windowState.minimized)
+        .sort((left, right) => right.z - left.z)
+
+      const currentIndex = ordered.findIndex((windowState) => windowState.id === activeWindow?.id)
+      const nextWindow = ordered[(currentIndex + 1) % ordered.length]
+
+      if (!nextWindow) {
+        return
+      }
+
+      bringToFront(nextWindow.id)
+      setAppSwitcherLabel(appLookup[nextWindow.id].name)
+      setAppSwitcherVisible(true)
+
+      if (appSwitcherTimer.current) {
+        window.clearTimeout(appSwitcherTimer.current)
+      }
+
+      appSwitcherTimer.current = window.setTimeout(() => setAppSwitcherVisible(false), 950)
+      return
+    }
+
+    if (event.key === 'Enter' && activeWindow?.id === 'explorer') {
+      event.preventDefault()
+      const selectedNode = findExplorerNode(selectedExplorerPath)
+
+      if (selectedNode) {
+        openExplorerEntry(selectedNode)
+      }
+    }
+  })
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleGlobalKeyDown(event)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const timeLabel = new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
@@ -831,8 +1391,10 @@ function App() {
     year: 'numeric',
   }).format(now)
 
+  const currentUser = systemUsers.find((user) => user.id === selectedUserId) ?? systemUsers[0]
   const sessionMinutes = Math.max(1, Math.floor((now.getTime() - appStartedAt) / 60000))
   const activeWallpaper = wallpapers.find((item) => item.id === wallpaper)
+  const activeEdgeTab = edgeTabs.find((tab) => tab.id === activeEdgeTabId) ?? edgeTabs[0]
   const normalizedQuery = startQuery.trim().toLocaleLowerCase('pt-BR')
   const filteredApps = startMenuApps.filter((app) => {
     if (!normalizedQuery) {
@@ -881,10 +1443,9 @@ function App() {
     .filter((item) => item.kind === 'file')
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
     .slice(0, 4)
-  const explorerFavorites = [
-    ...projectRootChildren.filter((item) => ['Belin7z', 'PulseView', 'Web-pc'].includes(item.name)),
-    ...explorerRecentFiles.filter((item) => item.name === 'README.md').slice(0, 1),
-  ]
+  const explorerFavorites = pinnedExplorerPaths
+    .map((pathValue) => findExplorerNode(pathValue))
+    .filter((item): item is ProjectTreeNode => item !== null)
   const explorerLargestEntrySize = Math.max(
     1,
     ...explorerEntries.map((item) => item.size || 1),
@@ -892,6 +1453,9 @@ function App() {
   const explorerContextNode = explorerContextMenu
     ? findExplorerNode(explorerContextMenu.nodePath)
     : null
+  const photoFiles = flattenExplorerFiles(projectTree)
+    .filter((item) => isImageFile(item))
+    .slice(0, 12)
   const visibleWindows = [...windows]
     .filter(
       (windowState) =>
@@ -1133,6 +1697,23 @@ function App() {
                 &hellip;
               </button>
             </div>
+            <form
+              className="explorer-addressbar"
+              onSubmit={(event) => {
+                event.preventDefault()
+                submitExplorerAddress()
+              }}
+            >
+              <input
+                type="text"
+                value={explorerAddressInput}
+                onChange={(event) => setExplorerAddressInput(event.target.value)}
+                placeholder="Digite um caminho"
+              />
+              <button type="submit" className="toolbar-button">
+                Ir
+              </button>
+            </form>
             <div className="breadcrumb-bar">
               {explorerBreadcrumbs.map((item, index) => (
                 <button
@@ -1405,6 +1986,11 @@ function App() {
                   ))}
                 </div>
               ) : null}
+              {explorerSelectedNode.rawUrl && isImageFile(explorerSelectedNode) ? (
+                <div className="image-preview-panel">
+                  <img src={explorerSelectedNode.rawUrl} alt={explorerSelectedNode.name} loading="lazy" />
+                </div>
+              ) : null}
               {explorerSelectedNode.previewText && isPreviewableFile(explorerSelectedNode) ? (
                 <div className="preview-panel">
                   <p className="section-title">Preview</p>
@@ -1462,6 +2048,13 @@ function App() {
                     Abrir pasta
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="secondary-button details-action"
+                  onClick={() => togglePinnedExplorerPath(explorerSelectedNode.path)}
+                >
+                  {pinnedExplorerPaths.includes(explorerSelectedNode.path) ? 'Desafixar' : 'Fixar em Favoritos'}
+                </button>
                 {explorerSelectedNode.htmlUrl ? (
                   <a
                     className="secondary-button details-action details-link"
@@ -1489,6 +2082,9 @@ function App() {
                 <button type="button" onClick={() => copyExplorerPath(explorerContextNode.path)}>
                   Copiar caminho
                 </button>
+                <button type="button" onClick={() => togglePinnedExplorerPath(explorerContextNode.path)}>
+                  {pinnedExplorerPaths.includes(explorerContextNode.path) ? 'Desafixar' : 'Fixar em Favoritos'}
+                </button>
                 {explorerContextNode.htmlUrl ? (
                   <a href={explorerContextNode.htmlUrl} target="_blank" rel="noreferrer">
                     Abrir no GitHub
@@ -1497,6 +2093,62 @@ function App() {
               </div>
             ) : null}
           </div>
+        </div>
+      )
+    }
+
+    if (id === 'notepad') {
+      return (
+        <div className="content-stack">
+          <section className="surface-card notes-shell">
+            <div className="notes-toolbar">
+              <div>
+                <p className="section-title">Bloco de Notas</p>
+                <strong>Salvo automaticamente no navegador</strong>
+              </div>
+              <span className="muted-text">{notepadContent.length} caracteres</span>
+            </div>
+
+            <textarea
+              className="notes-editor"
+              value={notepadContent}
+              onChange={(event) => setNotepadContent(event.target.value)}
+              spellCheck={false}
+            />
+          </section>
+        </div>
+      )
+    }
+
+    if (id === 'photos') {
+      return (
+        <div className="content-stack">
+          <section className="surface-card photos-shell">
+            <div className="browser-section-head">
+              <div>
+                <p className="section-title">Fotos</p>
+                <strong>Imagens detectadas dentro dos projetos</strong>
+              </div>
+              <span className="muted-text">{photoFiles.length} itens</span>
+            </div>
+
+            <div className="photos-grid">
+              {photoFiles.map((file) => (
+                <button
+                  key={file.path}
+                  type="button"
+                  className={`photo-card ${file.path === selectedExplorerPath ? 'active' : ''}`}
+                  onClick={() => setSelectedExplorerPath(file.path)}
+                >
+                  <div className="photo-thumb">
+                    {file.rawUrl ? <img src={file.rawUrl} alt={file.name} loading="lazy" /> : null}
+                  </div>
+                  <strong>{file.name}</strong>
+                  <small>{file.path}</small>
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       )
     }
@@ -1514,12 +2166,27 @@ function App() {
 
             <p className="terminal-title">PS E:\web pc&gt;</p>
 
-            {terminalCommands.map((command) => (
-              <div className="terminal-line" key={command}>
-                <span className="prompt">$</span>
-                <code>{command}</code>
+            {terminalEntries.map((entry, index) => (
+              <div className="terminal-line" key={`${entry.type}-${index}-${entry.text}`}>
+                <span className="prompt">{entry.type === 'command' ? '$' : '>'}</span>
+                <code>{entry.text}</code>
               </div>
             ))}
+
+            <form
+              className="terminal-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                runTerminalCommand(terminalInput)
+              }}
+            >
+              <span className="prompt">$</span>
+              <input
+                value={terminalInput}
+                onChange={(event) => setTerminalInput(event.target.value)}
+                placeholder="Digite um comando"
+              />
+            </form>
           </section>
 
           <section className="surface-card">
@@ -1530,6 +2197,9 @@ function App() {
               </button>
               <button type="button" className="secondary-button" onClick={() => openWindow('edge')}>
                 Abrir navegador
+              </button>
+              <button type="button" className="secondary-button" onClick={() => openWindow('notepad')}>
+                Abrir notas
               </button>
             </div>
           </section>
@@ -1542,9 +2212,42 @@ function App() {
         <div className="content-stack">
           <section className="edge-shell">
             <div className="edge-tabs">
-              <div className="edge-tab active">Web PC</div>
-              <div className="edge-tab">GitHub</div>
-              <div className="edge-tab">Pages</div>
+              {edgeTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`edge-tab ${tab.id === activeEdgeTabId ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveEdgeTabId(tab.id)
+                    setEdgeHistory((current) => [tab.url, ...current.filter((item) => item !== tab.url)].slice(0, 12))
+                  }}
+                >
+                  <span>{tab.title}</span>
+                  {edgeTabs.length > 1 ? (
+                    <span
+                      className="edge-tab-close"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        closeEdgeTab(tab.id)
+                      }}
+                    >
+                      &times;
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="edge-tab add"
+                onClick={() => addEdgeTab({
+                  id: `repo-${Date.now()}`,
+                  title: 'Belin7z',
+                  url: 'https://github.com/Belin7z',
+                  description: 'Perfil público com todos os projetos.',
+                })}
+              >
+                +
+              </button>
             </div>
 
             <div className="edge-toolbar">
@@ -1553,38 +2256,50 @@ function App() {
                 <span className="browser-arrow right" />
                 <span className="browser-refresh" />
               </div>
-              <div className="edge-address">https://belin7z.github.io/Web-pc/</div>
-              <div className="edge-avatar">B</div>
+              <div className="edge-address">{activeEdgeTab.url}</div>
+              <button
+                type="button"
+                className={`edge-favorite-toggle ${edgeFavorites.includes(activeEdgeTab.url) ? 'active' : ''}`}
+                onClick={() => setEdgeFavorites((current) => (
+                  current.includes(activeEdgeTab.url)
+                    ? current.filter((item) => item !== activeEdgeTab.url)
+                    : [activeEdgeTab.url, ...current].slice(0, 8)
+                ))}
+              >
+                &#9733;
+              </button>
+              <div className="edge-avatar">{currentUser.avatar}</div>
             </div>
 
             <div className="edge-content">
               <div className="edge-home-hero">
                 <div className="edge-surface">
                   <p className="eyebrow">Navegador</p>
-                  <h2>Abra o projeto, publique e navegue sem sair do Web PC.</h2>
-                  <p className="hero-copy">
-                    Página inicial redesenhada para parecer mais com um navegador real,
-                    com pesquisa, atalhos rápidos e áreas de acesso frequente.
-                  </p>
+                  <h2>{activeEdgeTab.title}</h2>
+                  <p className="hero-copy">{activeEdgeTab.description}</p>
                 </div>
 
                 <div className="browser-search-card">
                   <label className="browser-searchbar">
                     <span className="search-glyph" />
-                    <input type="text" value="Pesquisar na Web ou digitar uma URL" readOnly />
+                    <input type="text" value={activeEdgeTab.url} readOnly />
                   </label>
                   <div className="browser-shortcuts">
                     {browserHighlights.map((item) => (
-                      <a
+                      <button
                         key={item.title}
                         className="browser-shortcut"
-                        href={item.href}
-                        target={item.href.startsWith('http') ? '_blank' : undefined}
-                        rel={item.href.startsWith('http') ? 'noreferrer' : undefined}
+                        type="button"
+                        onClick={() => addEdgeTab({
+                          id: `${item.title}-${Date.now()}`,
+                          title: item.title,
+                          url: item.href.startsWith('#') ? 'https://belin7z.github.io/Web-pc/' : item.href,
+                          description: item.description,
+                        })}
                       >
                         <strong>{item.title}</strong>
                         <small>{item.meta}</small>
-                      </a>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1602,35 +2317,43 @@ function App() {
 
                   <div className="browser-card-grid">
                     {browserHighlights.map((item) => (
-                      <a
+                      <button
                         key={item.title}
+                        type="button"
                         className="browser-link-card"
-                        href={item.href}
-                        target={item.href.startsWith('http') ? '_blank' : undefined}
-                        rel={item.href.startsWith('http') ? 'noreferrer' : undefined}
+                        onClick={() => addEdgeTab({
+                          id: `${item.meta}-${Date.now()}`,
+                          title: item.title,
+                          url: item.href.startsWith('#') ? 'https://belin7z.github.io/Web-pc/' : item.href,
+                          description: item.description,
+                        })}
                       >
                         <span className="browser-card-badge">{item.meta}</span>
                         <strong>{item.title}</strong>
                         <p>{item.description}</p>
-                      </a>
+                      </button>
                     ))}
                   </div>
                 </section>
 
                 <section className="surface-card browser-sidebar">
-                  <p className="section-title">Navegação</p>
+                  <p className="section-title">Favoritos</p>
                   <div className="browser-sidebar-list">
-                    {webLinks.map((link) => (
-                      <a
-                        key={link.title}
-                        className="quick-link browser-rail-link"
-                        href={link.href}
-                        target={link.href.startsWith('http') ? '_blank' : undefined}
-                        rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
-                      >
-                        <strong>{link.title}</strong>
-                        <span className="muted-text">{link.description}</span>
-                      </a>
+                    {edgeFavorites.map((favorite) => (
+                      <div key={favorite} className="quick-link browser-rail-link">
+                        <strong>{favorite.replace('https://', '')}</strong>
+                        <span className="muted-text">Favorito salvo</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="section-title">Histórico</p>
+                  <div className="browser-sidebar-list">
+                    {edgeHistory.slice(0, 4).map((item) => (
+                      <div key={item} className="quick-link browser-rail-link">
+                        <strong>{item.replace('https://', '')}</strong>
+                        <span className="muted-text">Visitado recentemente</span>
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -1677,6 +2400,7 @@ function App() {
                 <li>Online: {navigator.onLine ? 'sim' : 'não'}</li>
                 <li>Idioma: {navigator.language}</li>
                 <li>Wallpaper ativo: {activeWallpaper?.name}</li>
+                <li>Usuário ativo: {currentUser.name}</li>
               </ul>
             </article>
 
@@ -1689,13 +2413,61 @@ function App() {
               </ul>
             </article>
           </section>
+          <section className="surface-card">
+            <p className="section-title">Experiência</p>
+            <div className="settings-control-list">
+              <label className="settings-control">
+                <span>Transparência</span>
+                <input
+                  type="range"
+                  min="36"
+                  max="92"
+                  value={preferences.transparency}
+                  onChange={(event) => setPreferences((current) => ({ ...current, transparency: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="settings-control">
+                <span>Escala do desktop</span>
+                <input
+                  type="range"
+                  min="92"
+                  max="108"
+                  value={preferences.desktopScale}
+                  onChange={(event) => setPreferences((current) => ({ ...current, desktopScale: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={preferences.animations}
+                  onChange={(event) => setPreferences((current) => ({ ...current, animations: event.target.checked }))}
+                />
+                <span>Animações do sistema</span>
+              </label>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={preferences.autoWallpaper}
+                  onChange={(event) => setPreferences((current) => ({ ...current, autoWallpaper: event.target.checked }))}
+                />
+                <span>Troca automática de wallpaper</span>
+              </label>
+            </div>
+          </section>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`webpc wallpaper-${wallpaper}`}>
+    <div
+      className={`webpc wallpaper-${wallpaper}`}
+      style={{
+        '--desktop-scale': `${preferences.desktopScale / 100}`,
+        '--panel-alpha': `${preferences.transparency / 100}`,
+        '--desktop-brightness': `${quickSettings.brightness / 100}`,
+      } as CSSProperties}
+    >
       <div className="wallpaper-fold fold-1" />
       <div className="wallpaper-fold fold-2" />
       <div className="wallpaper-fold fold-3" />
@@ -1704,7 +2476,10 @@ function App() {
       <main
         className="desktop-surface"
         ref={desktopRef}
-        onPointerDown={closeStartMenu}
+        onPointerDown={() => {
+          closeStartMenu()
+          closeSystemPanels()
+        }}
       >
         <section className="desktop-icons">
           {desktopShortcuts.map((appId) => {
@@ -1867,8 +2642,8 @@ function App() {
 
           <div className="start-footer">
             <div className="profile-chip">
-              <span className="profile-avatar">B</span>
-              <span>Belin7z</span>
+              <span className="profile-avatar">{currentUser.avatar}</span>
+              <span>{currentUser.name}</span>
             </div>
             <button type="button" className="power-button" aria-label="Lock screen" onClick={lockDesktop} />
           </div>
@@ -1913,17 +2688,121 @@ function App() {
         </div>
 
         <div className="taskbar-tray">
-          <span className="tray-icon wifi" />
-          <span className="tray-icon volume" />
-          <span className="tray-icon battery" />
-          <div className="tray-clock">
+          <button
+            type="button"
+            className="tray-cluster"
+            onClick={() => {
+              setQuickSettingsOpen((current) => !current)
+              setCalendarOpen(false)
+              closeStartMenu()
+            }}
+          >
+            <span className="tray-icon wifi" />
+            <span className="tray-icon volume" />
+            <span className="tray-icon battery" />
+          </button>
+          <button
+            type="button"
+            className="tray-clock"
+            onClick={() => {
+              setCalendarOpen((current) => !current)
+              setQuickSettingsOpen(false)
+              closeStartMenu()
+            }}
+          >
             <strong>{timeLabel}</strong>
             <span>{dateLabel}</span>
-          </div>
+          </button>
         </div>
 
         <div className="show-desktop" />
       </footer>
+
+      {quickSettingsOpen ? (
+        <section className="quick-settings-panel glass-panel" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="quick-settings-grid">
+            <button
+              type="button"
+              className={`quick-toggle ${quickSettings.wifi ? 'active' : ''}`}
+              onClick={() => setQuickSettings((current) => ({ ...current, wifi: !current.wifi }))}
+            >
+              Wi‑Fi
+            </button>
+            <button
+              type="button"
+              className={`quick-toggle ${quickSettings.bluetooth ? 'active' : ''}`}
+              onClick={() => setQuickSettings((current) => ({ ...current, bluetooth: !current.bluetooth }))}
+            >
+              Bluetooth
+            </button>
+            <button
+              type="button"
+              className={`quick-toggle ${quickSettings.airplaneMode ? 'active' : ''}`}
+              onClick={() => setQuickSettings((current) => ({ ...current, airplaneMode: !current.airplaneMode }))}
+            >
+              Avião
+            </button>
+            <button
+              type="button"
+              className={`quick-toggle ${preferences.autoWallpaper ? 'active' : ''}`}
+              onClick={() => setPreferences((current) => ({ ...current, autoWallpaper: !current.autoWallpaper }))}
+            >
+              Tema Auto
+            </button>
+          </div>
+          <label className="quick-slider">
+            <span>Volume</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={quickSettings.volume}
+              onChange={(event) => setQuickSettings((current) => ({ ...current, volume: Number(event.target.value) }))}
+            />
+          </label>
+          <label className="quick-slider">
+            <span>Brilho</span>
+            <input
+              type="range"
+              min="20"
+              max="100"
+              value={quickSettings.brightness}
+              onChange={(event) => setQuickSettings((current) => ({ ...current, brightness: Number(event.target.value) }))}
+            />
+          </label>
+        </section>
+      ) : null}
+
+      {calendarOpen ? (
+        <section className="notification-panel glass-panel" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="notification-header">
+            <div>
+              <p className="section-title">Central de notificações</p>
+              <strong>{timeLabel}</strong>
+            </div>
+            <span className="muted-text">{dateLabel}</span>
+          </div>
+          <div className="calendar-card">
+            <strong>{new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(now)}</strong>
+            <span>{new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit' }).format(now)}</span>
+          </div>
+          <div className="notification-list">
+            {notificationItems.map((item) => (
+              <article key={item.id} className="notification-item">
+                <strong>{item.title}</strong>
+                <p>{item.body}</p>
+                <small>{item.time}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {appSwitcherVisible ? (
+        <div className="app-switcher">
+          <span>{appSwitcherLabel}</span>
+        </div>
+      ) : null}
 
       {screen === 'boot' ? (
         <section className="boot-screen">
@@ -1935,6 +2814,15 @@ function App() {
               <span />
               <span />
             </div>
+          </div>
+        </section>
+      ) : null}
+
+      {screen === 'welcome' ? (
+        <section className="boot-screen welcome-screen">
+          <div className="boot-center">
+            <span className="lock-avatar">{currentUser.avatar}</span>
+            <p>Preparando sua sessão</p>
           </div>
         </section>
       ) : null}
@@ -1954,15 +2842,29 @@ function App() {
               <span>{dateLabel}</span>
             </div>
 
+            <div className="lock-user-list">
+              {systemUsers.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  className={`lock-user-chip ${selectedUserId === user.id ? 'active' : ''}`}
+                  onClick={() => setSelectedUserId(user.id)}
+                >
+                  <span className="profile-avatar">{user.avatar}</span>
+                  <span>{user.name}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="lock-card">
-              <span className="lock-avatar">B</span>
+              <span className="lock-avatar">{currentUser.avatar}</span>
               <div>
-                <strong>Belin7z</strong>
-                <span>Web PC</span>
+                <strong>{currentUser.name}</strong>
+                <span>{currentUser.subtitle}</span>
               </div>
               <label className="signin-field">
                 <span>PIN</span>
-                <input type="password" value="0000" readOnly aria-label="PIN" />
+                <input type="password" value={currentUser.pin} readOnly aria-label="PIN" />
               </label>
               <button type="button" className="signin-button" onClick={unlockDesktop}>
                 Entrar
