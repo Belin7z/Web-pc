@@ -745,7 +745,6 @@
 }
 
 .nav-list,
-.drive-list,
 .recommended-list {
   display: grid;
   gap: 10px;
@@ -903,13 +902,6 @@
   background: #ffeaa8;
 }
 
-.drive-row {
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.26);
-  border: 1px solid rgba(255, 255, 255, 0.42);
-}
-
 .explorer-panels {
   display: grid;
   grid-template-columns: 1fr;
@@ -922,26 +914,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-}
-
-.usage-label {
-  font-size: 0.92rem;
-  font-weight: 600;
-}
-
-.storage-bar {
-  height: 8px;
-  margin-top: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.36);
-}
-
-.storage-bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #0a84ff, #56bbff);
 }
 
 .folder-card {
