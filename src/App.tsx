@@ -315,7 +315,9 @@ function getExplorerBreadcrumbs(pathValue: string) {
 
 function getExplorerNodeType(node: ProjectTreeNode) {
   if (node.kind === 'folder') {
-    return 'Pasta'
+    const pathParts = node.path.split('/')
+
+    return pathParts.length === 2 ? 'Repositório' : 'Pasta'
   }
 
   const extension = node.extension?.toUpperCase()
@@ -334,6 +336,14 @@ function formatExplorerDate(dateValue: string) {
 }
 
 function formatExplorerSize(node: ProjectTreeNode) {
+  if (node.kind === 'folder' && node.path.split('/').length === 2 && node.size > 0) {
+    if (node.size < 1024 * 1024) {
+      return `${(node.size / 1024).toFixed(1)} KB`
+    }
+
+    return `${(node.size / (1024 * 1024)).toFixed(1)} MB`
+  }
+
   if (node.kind === 'folder') {
     return `${node.children?.length ?? 0} itens`
   }
@@ -358,9 +368,7 @@ function flattenExplorerFiles(currentNode: ProjectTreeNode): ProjectTreeNode[] {
 }
 
 function App() {
-  const initialExplorerFolder = isFolderNode(projectTree)
-    ? projectTree.children[0] ?? projectTree
-    : projectTree
+  const initialExplorerFolder = projectTree
   const desktopRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
   const animationTimers = useRef<Partial<Record<AppId, number>>>({})
@@ -659,18 +667,22 @@ function App() {
   const explorerFolderCount = explorerEntries.filter((item) => item.kind === 'folder').length
   const explorerFileCount = explorerEntries.filter((item) => item.kind === 'file').length
   const explorerSelectedNode = findExplorerNode(selectedExplorerPath) ?? explorerCurrentNode
+  const isExplorerRoot = explorerCurrentNode.path === projectTree.path
   const explorerBreadcrumbs = getExplorerBreadcrumbs(explorerCurrentNode.path)
   const explorerQuickLinks = [
     projectTree,
-    ...(isFolderNode(projectTree) ? projectTree.children.slice(0, 1) : []),
-    ...(isFolderNode(initialExplorerFolder)
-      ? initialExplorerFolder.children.filter((item) => item.kind === 'folder').slice(0, 6)
+    ...(isFolderNode(projectTree)
+      ? projectTree.children.filter((item) => item.kind === 'folder').slice(0, 6)
       : []),
   ]
-  const explorerRecentFiles = flattenExplorerFiles(initialExplorerFolder)
+  const explorerRecentFiles = flattenExplorerFiles(projectTree)
     .filter((item) => item.kind === 'file')
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
     .slice(0, 4)
+  const explorerLargestEntrySize = Math.max(
+    1,
+    ...explorerEntries.map((item) => item.size || 1),
+  )
   const visibleWindows = [...windows]
     .filter(
       (windowState) =>
@@ -906,13 +918,17 @@ function App() {
               <section className="surface-card explorer-folder-summary">
                 <div className="explorer-overview-top">
                   <div>
-                    <p className="section-title">Pasta atual</p>
+                    <p className="section-title">{isExplorerRoot ? 'GitHub' : 'Pasta atual'}</p>
                     <strong>{explorerCurrentNode.name}</strong>
-                    <p className="muted-text">Navegue pelas pastas e arquivos do projeto como em um PC real.</p>
+                    <p className="muted-text">
+                      {isExplorerRoot
+                        ? 'Repositórios públicos sincronizados do perfil Belin7z.'
+                        : 'Navegue pelas pastas e arquivos do projeto como em um PC real.'}
+                    </p>
                   </div>
                   <div className="explorer-stat-row">
                     <div className="explorer-stat-card">
-                      <small>Pastas</small>
+                      <small>{isExplorerRoot ? 'Repositórios' : 'Pastas'}</small>
                       <strong>{explorerFolderCount}</strong>
                     </div>
                     <div className="explorer-stat-card">
@@ -930,57 +946,92 @@ function App() {
               <section className="surface-card explorer-browser">
                 <div className="explorer-files-header">
                   <div>
-                    <p className="section-title">Conteúdo da pasta</p>
+                    <p className="section-title">{isExplorerRoot ? 'Projetos disponíveis' : 'Conteúdo da pasta'}</p>
                     <strong>{explorerEntries.length} itens encontrados</strong>
                   </div>
                   <span className="muted-text">{explorerCurrentNode.path.replaceAll('/', ' > ')}</span>
                 </div>
 
-                <div className="file-table-head browser">
-                  <span>Nome</span>
-                  <span>Tipo</span>
-                  <span>Atualizado em</span>
-                  <span>Tamanho</span>
-                </div>
+                {isExplorerRoot ? (
+                  <div className="repo-drive-grid">
+                    {explorerEntries.map((item) => (
+                      <button
+                        key={item.path}
+                        type="button"
+                        className={`repo-drive-card ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
+                        onClick={() => {
+                          if (item.kind === 'folder') {
+                            openExplorerFolder(item.path)
+                            return
+                          }
 
-                <div className="file-table browser-file-table">
-                  {explorerEntries.map((item) => (
-                    <button
-                      key={item.path}
-                      type="button"
-                      className={`file-row browser ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
-                      onClick={() => {
-                        if (item.kind === 'folder') {
-                          openExplorerFolder(item.path)
-                          return
-                        }
-
-                        setSelectedExplorerPath(item.path)
-                      }}
-                    >
-                      <div className="file-cell main">
-                        {item.kind === 'folder' ? <span className="folder-icon small" /> : <span className="recommended-doc small" />}
-                        <span className="file-main-copy">
+                          setSelectedExplorerPath(item.path)
+                        }}
+                      >
+                        <div className="repo-drive-top">
+                          <span className="folder-icon small" />
                           <strong>{item.name}</strong>
-                          <small>{item.path}</small>
-                        </span>
-                      </div>
-                      <span className="file-cell meta" data-label="Tipo">{getExplorerNodeType(item)}</span>
-                      <span className="file-cell meta" data-label="Atualizado em">{formatExplorerDate(item.updatedAt)}</span>
-                      <span className="file-cell meta" data-label="Tamanho">{formatExplorerSize(item)}</span>
-                    </button>
-                  ))}
-                </div>
+                        </div>
+                        <span className="repo-drive-copy">{item.description ?? 'Repositório público no GitHub.'}</span>
+                        <div className="repo-drive-bar">
+                          <span style={{ width: `${Math.max(18, Math.round((item.size / explorerLargestEntrySize) * 100))}%` }} />
+                        </div>
+                        <div className="repo-drive-meta">
+                          <span>{formatExplorerSize(item)}</span>
+                          <span>{formatExplorerDate(item.updatedAt)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="file-table-head browser">
+                      <span>Nome</span>
+                      <span>Tipo</span>
+                      <span>Atualizado em</span>
+                      <span>Tamanho</span>
+                    </div>
+
+                    <div className="file-table browser-file-table">
+                      {explorerEntries.map((item) => (
+                        <button
+                          key={item.path}
+                          type="button"
+                          className={`file-row browser ${item.path === explorerSelectedNode.path ? 'active' : ''}`}
+                          onClick={() => {
+                            if (item.kind === 'folder') {
+                              openExplorerFolder(item.path)
+                              return
+                            }
+
+                            setSelectedExplorerPath(item.path)
+                          }}
+                        >
+                          <div className="file-cell main">
+                            {item.kind === 'folder' ? <span className="folder-icon small" /> : <span className="recommended-doc small" />}
+                            <span className="file-main-copy">
+                              <strong>{item.name}</strong>
+                              <small>{item.path}</small>
+                            </span>
+                          </div>
+                          <span className="file-cell meta" data-label="Tipo">{getExplorerNodeType(item)}</span>
+                          <span className="file-cell meta" data-label="Atualizado em">{formatExplorerDate(item.updatedAt)}</span>
+                          <span className="file-cell meta" data-label="Tamanho">{formatExplorerSize(item)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </section>
 
               <div className="explorer-panels">
                 <section className="surface-card explorer-group-card">
                   <div className="explorer-section-top">
                     <div>
-                      <p className="section-title">Pastas do projeto</p>
-                      <strong>Áreas principais</strong>
+                      <p className="section-title">{isExplorerRoot ? 'Repositórios principais' : 'Pastas do projeto'}</p>
+                      <strong>{isExplorerRoot ? 'Seus projetos públicos' : 'Áreas principais'}</strong>
                     </div>
-                    <span className="muted-text">{explorerFolderCount} pastas</span>
+                    <span className="muted-text">{explorerFolderCount} {isExplorerRoot ? 'repositórios' : 'pastas'}</span>
                   </div>
 
                   <div className="explorer-favorites single-column">
@@ -1052,9 +1103,12 @@ function App() {
                 <div>
                   <dt>Descrição</dt>
                   <dd>
-                    {explorerSelectedNode.kind === 'folder'
-                      ? `Pasta com ${explorerSelectedNode.children?.length ?? 0} itens do projeto.`
-                      : `${getExplorerNodeType(explorerSelectedNode)} disponível dentro do repositório hospedado.`}
+                    {explorerSelectedNode.description
+                      ?? (
+                        explorerSelectedNode.kind === 'folder'
+                          ? `Pasta com ${explorerSelectedNode.children?.length ?? 0} itens do projeto.`
+                          : `${getExplorerNodeType(explorerSelectedNode)} disponível dentro do repositório hospedado.`
+                      )}
                   </dd>
                 </div>
                 <div>
@@ -1062,15 +1116,27 @@ function App() {
                   <dd>{formatExplorerSize(explorerSelectedNode)}</dd>
                 </div>
               </dl>
-              {explorerSelectedNode.kind === 'folder' ? (
-                <button
-                  type="button"
-                  className="secondary-button details-action"
-                  onClick={() => openExplorerFolder(explorerSelectedNode.path)}
-                >
-                  Abrir pasta
-                </button>
-              ) : null}
+              <div className="details-actions">
+                {explorerSelectedNode.kind === 'folder' ? (
+                  <button
+                    type="button"
+                    className="secondary-button details-action"
+                    onClick={() => openExplorerFolder(explorerSelectedNode.path)}
+                  >
+                    Abrir pasta
+                  </button>
+                ) : null}
+                {explorerSelectedNode.htmlUrl ? (
+                  <a
+                    className="secondary-button details-action details-link"
+                    href={explorerSelectedNode.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Abrir no GitHub
+                  </a>
+                ) : null}
+              </div>
             </aside>
           </div>
         </div>
