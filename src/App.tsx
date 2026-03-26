@@ -800,14 +800,14 @@ function App() {
               </div>
             </aside>
 
-            <div className="content-stack">
+            <div className="explorer-main">
               <section className="surface-card explorer-overview">
                 <div className="explorer-overview-top">
                   <div>
                     <p className="section-title">Página inicial</p>
                     <strong>Arquivos recentes e locais favoritos</strong>
                   </div>
-                  <button type="button" className="secondary-button">Ver tudo</button>
+                  <button type="button" className="secondary-button explorer-inline-action">Ver tudo</button>
                 </div>
 
                 <div className="explorer-favorites">
@@ -826,49 +826,68 @@ function App() {
                 </div>
               </section>
 
-              <section className="surface-card">
-                <p className="section-title">Dispositivos e unidades</p>
-                <div className="drive-list">
-                  {drives.map((drive) => (
-                    <article key={drive.name} className="drive-row">
-                      <div className="card-row">
-                        <div>
-                          <strong>{drive.name}</strong>
-                          <p className="muted-text">{drive.description}</p>
-                        </div>
-                        <span className="usage-label">{drive.usage}%</span>
-                      </div>
-                      <div className="storage-bar">
-                        <span style={{ width: `${drive.usage}%` }} />
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
+              <div className="explorer-panels">
+                <section className="surface-card explorer-drives">
+                  <div className="explorer-section-top">
+                    <div>
+                      <p className="section-title">Dispositivos e unidades</p>
+                      <strong>Armazenamento conectado</strong>
+                    </div>
+                    <span className="muted-text">{drives.length} itens</span>
+                  </div>
 
-              <section className="surface-card">
-                <div className="explorer-files-header">
-                  <p className="section-title">Arquivos recentes</p>
-                  <span className="muted-text">Nome, local e modificado</span>
-                </div>
-                <div className="file-table">
-                  {recentFiles.map((file) => (
-                    <button
-                      key={file.name}
-                      type="button"
-                      className={`file-row ${selectedExplorerItem === file.name ? 'active' : ''}`}
-                      onClick={() => setSelectedExplorerItem(file.name as keyof typeof explorerDetails)}
-                    >
-                      <div className="file-cell main">
-                        <span className="recommended-doc small" />
-                        <strong>{file.name}</strong>
-                      </div>
-                      <span className="file-cell">{file.location}</span>
-                      <span className="file-cell">{file.modified}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
+                  <div className="drive-list">
+                    {drives.map((drive) => (
+                      <article key={drive.name} className="drive-row">
+                        <div className="card-row">
+                          <div>
+                            <strong>{drive.name}</strong>
+                            <p className="muted-text">{drive.description}</p>
+                          </div>
+                          <span className="usage-label">{drive.usage}%</span>
+                        </div>
+                        <div className="storage-bar">
+                          <span style={{ width: `${drive.usage}%` }} />
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="surface-card explorer-recent">
+                  <div className="explorer-files-header">
+                    <div>
+                      <p className="section-title">Arquivos recentes</p>
+                      <strong>Última atividade no projeto</strong>
+                    </div>
+                    <span className="muted-text">Nome, local e modificado</span>
+                  </div>
+
+                  <div className="file-table-head">
+                    <span>Nome</span>
+                    <span>Local</span>
+                    <span>Modificado</span>
+                  </div>
+
+                  <div className="file-table">
+                    {recentFiles.map((file) => (
+                      <button
+                        key={file.name}
+                        type="button"
+                        className={`file-row ${selectedExplorerItem === file.name ? 'active' : ''}`}
+                        onClick={() => setSelectedExplorerItem(file.name as keyof typeof explorerDetails)}
+                      >
+                        <div className="file-cell main">
+                          <span className="recommended-doc small" />
+                          <strong>{file.name}</strong>
+                        </div>
+                        <span className="file-cell meta" data-label="Local">{file.location}</span>
+                        <span className="file-cell meta" data-label="Modificado">{file.modified}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </div>
             </div>
 
             <aside className="surface-card explorer-details">
