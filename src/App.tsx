@@ -219,8 +219,9 @@ const webLinks = [
   },
 ]
 
-const desktopShortcuts: AppId[] = ['home', 'explorer', 'edge', 'terminal', 'settings']
-const taskbarApps: AppId[] = ['home', 'edge', 'explorer', 'terminal', 'settings']
+const desktopShortcuts: AppId[] = ['explorer', 'edge', 'terminal', 'settings']
+const taskbarApps: AppId[] = ['edge', 'explorer', 'terminal', 'settings']
+const startMenuApps = apps.filter((app) => app.id !== 'home')
 
 const windowSeeds = [
   { x: 108, y: 62 },
@@ -258,7 +259,7 @@ function createWindow(id: AppId, index: number, z: number): WindowState {
 }
 
 function getDefaultWindows() {
-  return [createWindow('home', 0, 8)]
+  return []
 }
 
 function isWallpaperId(value: string): value is WallpaperId {
@@ -301,19 +302,19 @@ function loadWindows(): WindowState[] {
       .filter((windowState): windowState is WindowState => {
         return typeof windowState === 'object' && windowState !== null
       })
-      .map((windowState, index) => {
+      .map((windowState, index): WindowState | null => {
         const id = typeof windowState.id === 'string' && isAppId(windowState.id)
           ? windowState.id
           : null
 
-        if (!id) {
+        if (!id || id === 'home') {
           return null
         }
 
         const definition = appLookup[id]
 
         return {
-          id,
+          id: id as AppId,
           x: typeof windowState.x === 'number' ? windowState.x : windowSeeds[index % windowSeeds.length].x,
           y: typeof windowState.y === 'number' ? windowState.y : windowSeeds[index % windowSeeds.length].y,
           width: typeof windowState.width === 'number' ? windowState.width : definition.window.width,
@@ -589,7 +590,7 @@ function App() {
   const sessionMinutes = Math.max(1, Math.floor((now.getTime() - appStartedAt) / 60000))
   const activeWallpaper = wallpapers.find((item) => item.id === wallpaper)
   const normalizedQuery = startQuery.trim().toLocaleLowerCase('pt-BR')
-  const filteredApps = apps.filter((app) => {
+  const filteredApps = startMenuApps.filter((app) => {
     if (!normalizedQuery) {
       return true
     }
